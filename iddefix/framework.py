@@ -910,11 +910,11 @@ class EvolutionaryAlgorithm:
             )
         elif self.plane == "longitudinal" and self.N_resonators == 1:
             impedance_data = imp.Resonator_longitudinal_imp(
-                frequency_data, pars, wake_length
+                frequency_data, *pars, wake_length
             )
         elif self.plane == "transverse" and self.N_resonators == 1:
             impedance_data = imp.Resonator_transverse_imp(
-                frequency_data, pars, wake_length
+                frequency_data, *pars, wake_length
             )
 
         return impedance_data

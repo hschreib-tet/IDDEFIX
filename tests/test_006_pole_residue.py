@@ -3,6 +3,7 @@ import numpy as np
 from iddefix.poleResidueFormulas import PoleResidue
 from iddefix.resonatorFormulas import Impedances
 from iddefix.poleResidueFitting import (
+    build_fit_weights,
     decode_log_poles,
     fit_poles_evolutionary,
     fit_residues,
@@ -742,3 +743,81 @@ def test_evolutionary_fit_recovers_mixed_poles_from_finite_wake():
     )
 
     assert result.objective_value < 1.0e-8
+
+def test_linear_frequency_weights_for_irregular_grid():
+    frequencies = np.array([1.0, 2.0, 4.0])
+    impedance = np.ones(3, dtype=complex)
+
+    weights = build_fit_weights(
+        frequencies,
+        impedance,
+        frequency_weighting="linear",
+    )
+
+    expected_quadrature_weights = np.array(
+        [0.5, 1.5, 1.0]
+    )
+
+    expected_weights = np.sqrt(
+        expected_quadrature_weights
+    )
+
+    expected_weights /= np.sqrt(
+        np.mean(expected_weights**2)
+    )
+
+    np.testing.assert_allclose(
+        weights,
+        expected_weights,
+    )
+
+
+def test_log_frequency_weights_are_independent_of_order():
+    frequencies = np.array([100.0, 1.0, 10.0])
+    impedance = np.ones(3, dtype=complex)
+
+    weights_unsorted = build_fit_weights(
+        frequencies,
+        impedance,
+        frequency_weighting="log",
+    )
+
+    order = np.argsort(frequencies)
+
+    weights_sorted = build_fit_weights(
+        frequencies[order],
+        impedance[order],
+        frequency_weighting="log",
+    )
+
+    np.testing.assert_allclose(
+        weights_unsorted[order],
+        weights_sorted,
+    )
+
+
+def test_relative_amplitude_weighting():
+    frequencies = np.array([1.0, 2.0, 3.0])
+    impedance = np.array([1.0, 10.0, 100.0])
+
+    weights = build_fit_weights(
+        frequencies,
+        impedance,
+        amplitude_weighting="relative",
+    )
+
+    weighted_magnitudes = weights * np.abs(impedance)
+
+    np.testing.assert_allclose(
+        weighted_magnitudes,
+        weighted_magnitudes[0],
+    )
+
+
+def test_log_weighting_rejects_zero_frequency():
+    with np.testing.assert_raises(ValueError):
+        build_fit_weights(
+            frequencies=[0.0, 1.0, 10.0],
+            impedance=[1.0, 1.0, 1.0],
+            frequency_weighting="log",
+        )

@@ -491,6 +491,157 @@ def test_evolutionary_fit_recovers_single_real_pole():
     assert result.objective_value < 1.0e-12
 
 
+def test_evolutionary_fit_recovers_complex_pole_pair():
+    frequencies = np.linspace(1.0e6, 3.0e7, 300)
+
+    expected_pole = -5e6 + 8.0e7j
+    expected_residue = 2.0e10 + 0.5e10j
+
+    impedance = PoleResidue.impedance(
+        frequencies,
+        poles=[
+            expected_pole,
+            np.conj(expected_pole),
+        ],
+        residues=[
+            expected_residue,
+            np.conj(expected_residue),
+        ],
+    )
+
+    result = fit_poles_evolutionary(
+        frequencies=frequencies,
+        impedance=impedance,
+        number_real_poles=0,
+        number_complex_pairs=1,
+        parameter_bounds=[
+            (
+                np.log10(1.0e6),
+                np.log10(1.0e7),
+            ),
+            (
+                np.log10(5.0e7),
+                np.log10(1.2e8),
+            ),
+        ],
+        maxiter=150,
+        popsize=12,
+        tol=1.0e-9,
+        polish=True,
+        seed=1234,
+        workers=1,
+    )
+
+    fitted_pole = result.complex_poles[0]
+    fitted_residue = result.residue_fit.residues[0]
+
+    np.testing.assert_allclose(
+        fitted_pole,
+        expected_pole,
+        rtol=1.0e-4,
+    )
+
+    np.testing.assert_allclose(
+        fitted_residue,
+        expected_residue,
+        rtol=1.0e-4,
+    )
+
+    assert result.objective_value < 1.0e-10
+
+def test_evolutionary_fit_recovers_mixed_poles():
+    frequencies = np.linspace(1.0e6, 3.0e7, 400)
+
+    expected_real_pole = -1.0e7
+    expected_complex_pole = -3.0e6 + 8.0e7j
+
+    expected_real_residue = 8.0e9
+    expected_complex_residue = 2.0e10 + 0.5e10j
+
+    poles = np.array(
+        [
+            expected_real_pole,
+            expected_complex_pole,
+            np.conj(expected_complex_pole),
+        ]
+    )
+
+    residues = np.array(
+        [
+            expected_real_residue,
+            expected_complex_residue,
+            np.conj(expected_complex_residue),
+        ]
+    )
+
+    impedance = PoleResidue.impedance(
+        frequencies,
+        poles,
+        residues,
+    )
+
+    result = fit_poles_evolutionary(
+        frequencies=frequencies,
+        impedance=impedance,
+        number_real_poles=1,
+        number_complex_pairs=1,
+        parameter_bounds=[
+            # Real decay rate
+            (
+                np.log10(5.0e6),
+                np.log10(2.0e7),
+            ),
+            # Complex decay rate
+            (
+                np.log10(1.0e6),
+                np.log10(1.0e7),
+            ),
+            # Complex angular frequency
+            (
+                np.log10(5.0e7),
+                np.log10(1.2e8),
+            ),
+        ],
+        maxiter=250,
+        popsize=15,
+        tol=1.0e-9,
+        polish=True,
+        seed=5678,
+        workers=1,
+    )
+
+    fitted_real_pole = result.real_poles[0]
+    fitted_complex_pole = result.complex_poles[0]
+
+    fitted_real_residue = result.residue_fit.residues[0]
+    fitted_complex_residue = result.residue_fit.residues[1]
+
+    np.testing.assert_allclose(
+        fitted_real_pole,
+        expected_real_pole,
+        rtol=1.0e-3,
+    )
+
+    np.testing.assert_allclose(
+        fitted_complex_pole,
+        expected_complex_pole,
+        rtol=1.0e-3,
+    )
+
+    np.testing.assert_allclose(
+        fitted_real_residue,
+        expected_real_residue,
+        rtol=1.0e-3,
+    )
+
+    np.testing.assert_allclose(
+        fitted_complex_residue,
+        expected_complex_residue,
+        rtol=1.0e-3,
+    )
+
+    assert result.objective_value < 1.0e-8
+
 def test_evolutionary_fit_checks_number_of_bounds():
     with np.testing.assert_raises(ValueError):
         fit_poles_evolutionary(

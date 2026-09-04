@@ -2,6 +2,8 @@ import numpy as np
 
 from iddefix.poleResidueFormulas import PoleResidue
 from iddefix.resonatorFormulas import Impedances
+from iddefix.poleResidueFitting import fit_residues
+
 
 from scipy.integrate import quad
 
@@ -183,3 +185,118 @@ def test_zero_wake_length_produces_zero_impedance():
     )
 
     np.testing.assert_allclose(impedance, 0.0)
+
+
+def test_least_squares_recovers_residues():
+    frequencies = np.linspace(1.0e6, 2.0e8, 500)
+
+    real_poles = np.array([-2.0e7])
+    complex_poles = np.array([-5.0e6 + 4.0e7j])
+
+    expected_poles = np.array(
+        [
+            real_poles[0],
+            complex_poles[0],
+            np.conj(complex_poles[0]),
+        ]
+    )
+
+    expected_residues = np.array(
+        [
+            1.5e10,
+            2.0e10 + 0.7e10j,
+            2.0e10 - 0.7e10j,
+        ]
+    )
+
+    impedance = PoleResidue.impedance(
+        frequencies,
+        expected_poles,
+        expected_residues,
+    )
+
+    result = fit_residues(
+        frequencies,
+        impedance,
+        real_poles,
+        complex_poles,
+    )
+
+    np.testing.assert_allclose(
+        result.fitted_impedance,
+        impedance,
+        rtol=1.0e-11,
+        atol=1.0e-7,
+    )
+
+    np.testing.assert_allclose(
+        result.residues,
+        expected_residues,
+        rtol=1.0e-11,
+        atol=1.0e-5,
+    )
+
+
+def test_least_squares_recovers_finite_wake_residues():
+    frequencies = np.linspace(1.0e6, 2.0e8, 500)
+    wake_length = 30.0
+
+    real_poles = np.array([-2.0e7])
+    complex_poles = np.array([-5.0e6 + 4.0e7j])
+
+    expected_poles = np.array(
+        [
+            real_poles[0],
+            complex_poles[0],
+            np.conj(complex_poles[0]),
+        ]
+    )
+
+    expected_residues = np.array(
+        [
+            1.5e10,
+            2.0e10 + 0.7e10j,
+            2.0e10 - 0.7e10j,
+        ]
+    )
+
+    impedance = PoleResidue.finite_wake_impedance(
+        frequencies,
+        expected_poles,
+        expected_residues,
+        wake_length,
+    )
+
+    result = fit_residues(
+        frequencies,
+        impedance,
+        real_poles,
+        complex_poles,
+        wake_length=wake_length,
+    )
+
+    np.testing.assert_allclose(
+        result.fitted_impedance,
+        impedance,
+        rtol=1.0e-11,
+        atol=1.0e-7,
+    )
+
+    np.testing.assert_allclose(
+        result.residues,
+        expected_residues,
+        rtol=1.0e-11,
+        atol=1.0e-5,
+    )
+
+
+def test_residue_fit_rejects_unstable_poles():
+    with np.testing.assert_raises(ValueError):
+        fit_residues(
+            frequencies=[1.0e6],
+            impedance=[1.0 + 1.0j],
+            real_poles=[1.0e7],
+            complex_poles=[],
+        )
+
+

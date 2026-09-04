@@ -5,6 +5,10 @@ from dataclasses import dataclass
 import numpy as np
 import numpy.typing as npt
 
+from functools import partial
+
+from scipy.optimize import differential_evolution
+
 from .poleResidueFormulas import SPEED_OF_LIGHT
 
 
@@ -20,6 +24,18 @@ class ResidueFitResult:
     fitted_impedance: np.ndarray
     squared_error: float
     rank: int
+
+@dataclass
+class PoleOptimizationResult:
+    """Result of the evolutionary pole optimization."""
+
+    pole_parameters: np.ndarray
+    real_poles: np.ndarray
+    complex_poles: np.ndarray
+    residue_fit: ResidueFitResult
+    objective_value: float
+    success: bool
+    message: str
 
 def decode_log_poles(
     parameters: ArrayLike,
@@ -307,3 +323,117 @@ def pole_objective(
         return np.inf
 
     return float(normalized_error)
+
+def fit_poles_evolutionary(
+    frequencies: ArrayLike,
+    impedance: ArrayLike,
+    number_real_poles: int,
+    number_complex_pairs: int,
+    parameter_bounds: list[tuple[float, float]],
+    wake_length: float | None = None,
+    maxiter: int = 1000,
+    popsize: int = 15,
+    mutation: float | tuple[float, float] = (0.1, 0.5),
+    crossover_rate: float = 0.8,
+    tol: float = 0.01,
+    polish: bool = False,
+    seed: int | None = None,
+    workers: int = 1,
+) -> PoleOptimizationResult:
+    """Fit pole locations using Differential Evolution.
+
+    Differential Evolution optimizes logarithmic pole parameters.
+    For every candidate pole set, the optimal residues are obtained
+    by linear least squares.
+
+    Parameters
+    ----------
+    frequencies
+        Frequencies in Hz.
+    impedance
+        Complex impedance data.
+    number_real_poles
+        Number of independent negative real poles.
+    number_complex_pairs
+        Number of complex-conjugate pole pairs.
+    parameter_bounds
+        Bounds for the logarithmic pole parameters. The order is
+
+        [log10(real decay rates),
+         log10(complex decay rates),
+         log10(complex angular frequencies)].
+
+        All rates are expressed in rad/s.
+    wake_length
+        Simulated wake length in metres. If None, fully decayed
+        impedance data are assumed.
+    """
+    frequencies = np.atleast_1d(
+        np.asarray(frequencies, dtype=float)
+    )
+
+    impedance = np.atleast_1d(
+        np.asarray(impedance, dtype=complex)
+    )
+
+    expected_number_bounds = (
+        number_real_poles
+        + 2 * number_complex_pairs
+    )
+
+    if len(parameter_bounds) != expected_number_bounds:
+        raise ValueError(
+            f"expected {expected_number_bounds} parameter bounds, "
+            f"received {len(parameter_bounds)}"
+        )
+
+    objective_function = partial(
+        pole_objective,
+        frequencies=frequencies,
+        impedance=impedance,
+        number_real_poles=number_real_poles,
+        number_complex_pairs=number_complex_pairs,
+        wake_length=wake_length,
+    )
+
+    updating = "immediate" if workers == 1 else "deferred"
+
+    optimization = differential_evolution(
+        objective_function,
+        bounds=parameter_bounds,
+        strategy="rand1bin",
+        maxiter=maxiter,
+        popsize=popsize,
+        mutation=mutation,
+        recombination=crossover_rate,
+        tol=tol,
+        polish=polish,
+        seed=seed,
+        init="latinhypercube",
+        workers=workers,
+        updating=updating,
+    )
+
+    real_poles, complex_poles = decode_log_poles(
+        optimization.x,
+        number_real_poles,
+        number_complex_pairs,
+    )
+
+    residue_fit = fit_residues(
+        frequencies=frequencies,
+        impedance=impedance,
+        real_poles=real_poles,
+        complex_poles=complex_poles,
+        wake_length=wake_length,
+    )
+
+    return PoleOptimizationResult(
+        pole_parameters=optimization.x,
+        real_poles=real_poles,
+        complex_poles=complex_poles,
+        residue_fit=residue_fit,
+        objective_value=float(optimization.fun),
+        success=bool(optimization.success),
+        message=str(optimization.message),
+    )

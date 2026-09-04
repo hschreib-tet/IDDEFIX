@@ -4,6 +4,7 @@ from iddefix.poleResidueFormulas import PoleResidue
 from iddefix.resonatorFormulas import Impedances
 from iddefix.poleResidueFitting import (
     decode_log_poles,
+    fit_poles_evolutionary,
     fit_residues,
     pole_objective,
 )
@@ -443,3 +444,59 @@ def test_exact_poles_fit_better_than_incorrect_poles():
     )
 
     assert exact_error < incorrect_error
+
+
+def test_evolutionary_fit_recovers_single_real_pole():
+    frequencies = np.linspace(1.0e6, 1.0e8, 200)
+
+    expected_pole = -2.0e7
+    expected_residue = 1.5e10
+
+    impedance = PoleResidue.impedance(
+        frequencies,
+        poles=[expected_pole],
+        residues=[expected_residue],
+    )
+
+    result = fit_poles_evolutionary(
+        frequencies=frequencies,
+        impedance=impedance,
+        number_real_poles=1,
+        number_complex_pairs=0,
+        parameter_bounds=[
+            (
+                np.log10(1.0e7),
+                np.log10(4.0e7),
+            )
+        ],
+        maxiter=100,
+        popsize=10,
+        tol=1.0e-10,
+        polish=True,
+        seed=1234,
+    )
+
+    np.testing.assert_allclose(
+        result.real_poles,
+        [expected_pole],
+        rtol=1.0e-5,
+    )
+
+    np.testing.assert_allclose(
+        result.residue_fit.residues,
+        [expected_residue],
+        rtol=1.0e-5,
+    )
+
+    assert result.objective_value < 1.0e-12
+
+
+def test_evolutionary_fit_checks_number_of_bounds():
+    with np.testing.assert_raises(ValueError):
+        fit_poles_evolutionary(
+            frequencies=[1.0e6],
+            impedance=[1.0 + 1.0j],
+            number_real_poles=1,
+            number_complex_pairs=1,
+            parameter_bounds=[(6.0, 8.0)],
+        )

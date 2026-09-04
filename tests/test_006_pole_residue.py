@@ -2,7 +2,11 @@ import numpy as np
 
 from iddefix.poleResidueFormulas import PoleResidue
 from iddefix.resonatorFormulas import Impedances
-from iddefix.poleResidueFitting import fit_residues
+from iddefix.poleResidueFitting import (
+    decode_log_poles,
+    fit_residues,
+    pole_objective,
+)
 
 
 from scipy.integrate import quad
@@ -299,4 +303,143 @@ def test_residue_fit_rejects_unstable_poles():
             complex_poles=[],
         )
 
+def test_decode_log_poles():
+    parameters = np.log10(
+        [
+            2.0e7,
+            8.0e7,
+            5.0e6,
+            1.0e7,
+            4.0e7,
+            9.0e7,
+        ]
+    )
 
+    real_poles, complex_poles = decode_log_poles(
+        parameters,
+        number_real_poles=2,
+        number_complex_pairs=2,
+    )
+
+    expected_real_poles = np.array(
+        [-2.0e7, -8.0e7]
+    )
+
+    expected_complex_poles = np.array(
+        [
+            -5.0e6 + 4.0e7j,
+            -1.0e7 + 9.0e7j,
+        ]
+    )
+
+    np.testing.assert_allclose(
+        real_poles,
+        expected_real_poles,
+    )
+
+    np.testing.assert_allclose(
+        complex_poles,
+        expected_complex_poles,
+    )
+
+
+def test_pole_objective_is_zero_for_exact_poles():
+    frequencies = np.linspace(1.0e6, 2.0e8, 500)
+
+    real_pole = -2.0e7
+    complex_pole = -5.0e6 + 4.0e7j
+
+    poles = np.array(
+        [
+            real_pole,
+            complex_pole,
+            np.conj(complex_pole),
+        ]
+    )
+
+    residues = np.array(
+        [
+            1.5e10,
+            2.0e10 + 0.7e10j,
+            2.0e10 - 0.7e10j,
+        ]
+    )
+
+    impedance = PoleResidue.impedance(
+        frequencies,
+        poles,
+        residues,
+    )
+
+    parameters = np.log10(
+        [
+            2.0e7,
+            5.0e6,
+            4.0e7,
+        ]
+    )
+
+    error = pole_objective(
+        parameters,
+        frequencies,
+        impedance,
+        number_real_poles=1,
+        number_complex_pairs=1,
+    )
+
+    assert error < 1.0e-20
+
+
+def test_exact_poles_fit_better_than_incorrect_poles():
+    frequencies = np.linspace(1.0e6, 2.0e8, 500)
+
+    real_pole = -2.0e7
+    complex_pole = -5.0e6 + 4.0e7j
+
+    poles = np.array(
+        [
+            real_pole,
+            complex_pole,
+            np.conj(complex_pole),
+        ]
+    )
+
+    residues = np.array(
+        [
+            1.5e10,
+            2.0e10 + 0.7e10j,
+            2.0e10 - 0.7e10j,
+        ]
+    )
+
+    impedance = PoleResidue.impedance(
+        frequencies,
+        poles,
+        residues,
+    )
+
+    exact_parameters = np.log10(
+        [2.0e7, 5.0e6, 4.0e7]
+    )
+
+    incorrect_parameters = np.log10(
+        [8.0e7, 3.0e7, 1.2e8]
+    )
+
+    exact_error = pole_objective(
+        exact_parameters,
+        frequencies,
+        impedance,
+        number_real_poles=1,
+        number_complex_pairs=1,
+    )
+
+    incorrect_error = pole_objective(
+        incorrect_parameters,
+        frequencies,
+        impedance,
+        number_real_poles=1,
+        number_complex_pairs=1,
+    )
+
+    assert exact_error < incorrect_error

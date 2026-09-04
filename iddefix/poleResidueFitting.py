@@ -21,6 +21,68 @@ class ResidueFitResult:
     squared_error: float
     rank: int
 
+def decode_log_poles(
+    parameters: ArrayLike,
+    number_real_poles: int,
+    number_complex_pairs: int,
+) -> tuple[np.ndarray, np.ndarray]:
+    """Convert logarithmic parameters into stable poles.
+
+    The parameter order is
+
+    [log10(a_real),
+     log10(alpha_complex),
+     log10(beta_complex)],
+
+    where
+
+    p_real = -a
+
+    and
+
+    p_complex = -alpha + 1j*beta.
+
+    All rates are expressed in rad/s.
+    """
+    parameters = np.asarray(parameters, dtype=float)
+
+    expected_size = (
+        number_real_poles
+        + 2 * number_complex_pairs
+    )
+
+    if parameters.size != expected_size:
+        raise ValueError(
+            f"expected {expected_size} pole parameters, "
+            f"received {parameters.size}"
+        )
+
+    real_stop = number_real_poles
+    decay_stop = real_stop + number_complex_pairs
+
+    real_rates = 10.0 ** parameters[:real_stop]
+
+    complex_decay_rates = 10.0 ** parameters[
+        real_stop:decay_stop
+    ]
+
+    complex_frequencies = 10.0 ** parameters[
+        decay_stop:
+    ]
+
+    real_poles = -np.sort(real_rates).astype(complex)
+
+    complex_poles = (
+        -complex_decay_rates
+        + 1j * complex_frequencies
+    )
+
+    complex_poles = complex_poles[
+        np.argsort(complex_poles.imag)
+    ]
+
+    return real_poles, complex_poles
+
 
 def _pole_basis(
     frequencies: np.ndarray,
@@ -201,3 +263,47 @@ def fit_residues(
         squared_error=squared_error,
         rank=int(rank),
     )
+
+def pole_objective(
+    parameters: ArrayLike,
+    frequencies: ArrayLike,
+    impedance: ArrayLike,
+    number_real_poles: int,
+    number_complex_pairs: int,
+    wake_length: float | None = None,
+) -> float:
+    """Evaluate the normalized fitting error for candidate poles."""
+    impedance = np.atleast_1d(
+        np.asarray(impedance, dtype=complex)
+    )
+
+    real_poles, complex_poles = decode_log_poles(
+        parameters,
+        number_real_poles,
+        number_complex_pairs,
+    )
+
+    try:
+        result = fit_residues(
+            frequencies=frequencies,
+            impedance=impedance,
+            real_poles=real_poles,
+            complex_poles=complex_poles,
+            wake_length=wake_length,
+        )
+    except (ValueError, np.linalg.LinAlgError):
+        return np.inf
+
+    normalization = np.sum(np.abs(impedance) ** 2)
+
+    if normalization == 0.0:
+        normalization = 1.0
+
+    normalized_error = (
+        result.squared_error / normalization
+    )
+
+    if not np.isfinite(normalized_error):
+        return np.inf
+
+    return float(normalized_error)

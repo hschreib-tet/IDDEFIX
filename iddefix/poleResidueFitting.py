@@ -21,6 +21,7 @@ class ResidueFitResult:
 
     poles: np.ndarray
     residues: np.ndarray
+    direct_term: float
     fitted_impedance: np.ndarray
     squared_error: float
     weighted_squared_error: float
@@ -261,6 +262,7 @@ def fit_residues(
     complex_poles: ArrayLike,
     wake_length: float | None = None,
     weights: ArrayLike | None = None,
+    fit_direct_term: bool = False,
 ) -> ResidueFitResult:
     """Determine optimal residues for fixed poles.
 
@@ -361,6 +363,11 @@ def fit_residues(
                 1j * (phi_positive - phi_negative)
             )
 
+    if fit_direct_term:
+        columns.append(
+            np.ones(frequencies.size, dtype=complex)
+        )
+
     design_matrix = np.column_stack(columns)
 
     real_system_matrix = np.vstack(
@@ -410,6 +417,11 @@ def fit_residues(
         dtype=complex,
     )
 
+    if fit_direct_term:
+        direct_term = float(coefficients[-1])
+    else:
+        direct_term = 0.0
+
     full_poles = np.concatenate(
         [
             real_poles,
@@ -432,7 +444,9 @@ def fit_residues(
         wake_length,
     )
 
-    fitted_impedance = full_basis @ full_residues
+    fitted_impedance = (
+        direct_term + full_basis @ full_residues
+    )
 
     squared_error = float(
         np.sum(np.abs(impedance - fitted_impedance) ** 2)
@@ -449,6 +463,7 @@ def fit_residues(
     return ResidueFitResult(
         poles=full_poles,
         residues=full_residues,
+        direct_term=direct_term,
         fitted_impedance=fitted_impedance,
         squared_error=squared_error,
         weighted_squared_error=weighted_squared_error,
@@ -463,6 +478,7 @@ def pole_objective(
     number_complex_pairs: int,
     wake_length: float | None = None,
     weights: ArrayLike | None = None,
+    fit_direct_term: bool = False,
 ) -> float:
     """Evaluate the normalized fitting error for candidate poles."""
     impedance = np.atleast_1d(
@@ -483,6 +499,7 @@ def pole_objective(
             complex_poles=complex_poles,
             wake_length=wake_length,
             weights=weights,
+            fit_direct_term=fit_direct_term,
         )
     except (ValueError, np.linalg.LinAlgError):
         return np.inf
@@ -532,6 +549,7 @@ def fit_poles_evolutionary(
     amplitude_weighting: str = "uniform",
     frequency_weighting: str = "samples",
     magnitude_floor: float | None = None,
+    fit_direct_term: bool = False,
 ) -> PoleOptimizationResult:
     """Fit pole locations using Differential Evolution.
 
@@ -595,6 +613,7 @@ def fit_poles_evolutionary(
         number_complex_pairs=number_complex_pairs,
         wake_length=wake_length,
         weights=weights,
+        fit_direct_term=fit_direct_term,
     )
 
     updating = "immediate" if workers == 1 else "deferred"
@@ -628,6 +647,7 @@ def fit_poles_evolutionary(
         complex_poles=complex_poles,
         wake_length=wake_length,
         weights=weights,
+        fit_direct_term=fit_direct_term,
     )
 
     return PoleOptimizationResult(

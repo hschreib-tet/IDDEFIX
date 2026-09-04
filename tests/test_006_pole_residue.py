@@ -821,3 +821,70 @@ def test_log_weighting_rejects_zero_frequency():
             impedance=[1.0, 1.0, 1.0],
             frequency_weighting="log",
         )
+
+def test_least_squares_recovers_direct_term():
+    frequencies = np.linspace(0.0, 10.0, 200)
+
+    expected_pole = -3.0
+    expected_residue = 5.0
+    expected_direct_term = 2.0
+
+    impedance = PoleResidue.impedance(
+        frequencies=frequencies,
+        poles=[expected_pole],
+        residues=[expected_residue],
+        direct_term=expected_direct_term,
+    )
+
+    result = fit_residues(
+        frequencies=frequencies,
+        impedance=impedance,
+        real_poles=[expected_pole],
+        complex_poles=[],
+        fit_direct_term=True,
+    )
+
+    np.testing.assert_allclose(
+        result.residues,
+        [expected_residue],
+        rtol=1.0e-12,
+        atol=1.0e-12,
+    )
+
+    np.testing.assert_allclose(
+        result.direct_term,
+        expected_direct_term,
+        rtol=1.0e-12,
+        atol=1.0e-12,
+    )
+
+    np.testing.assert_allclose(
+        result.fitted_impedance,
+        impedance,
+        rtol=1.0e-12,
+        atol=1.0e-12,
+    )
+
+def test_finite_wake_impedance_includes_direct_term():
+    frequencies = np.array([1.0e6, 2.0e6])
+    direct_term = 4.0
+
+    without_direct_term = PoleResidue.finite_wake_impedance(
+        frequencies=frequencies,
+        poles=[-1.0e7],
+        residues=[2.0e9],
+        wake_length=20.0,
+    )
+
+    with_direct_term = PoleResidue.finite_wake_impedance(
+        frequencies=frequencies,
+        poles=[-1.0e7],
+        residues=[2.0e9],
+        wake_length=20.0,
+        direct_term=direct_term,
+    )
+
+    np.testing.assert_allclose(
+        with_direct_term - without_direct_term,
+        direct_term,
+    )

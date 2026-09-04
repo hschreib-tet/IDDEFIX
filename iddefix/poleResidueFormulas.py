@@ -44,6 +44,7 @@ class PoleResidue:
         poles: ArrayLike,
         residues: ArrayLike,
         wake_length: float,
+        direct_term: complex = 0.0,
     ) -> np.ndarray:
         r"""Evaluate the impedance obtained from a finite wake.
 
@@ -88,7 +89,10 @@ class PoleResidue:
             / denominator
         )
 
-        return np.sum(residues[None, :] * basis, axis=1)
+        return direct_term + np.sum(
+            residues[None, :] * basis,
+            axis=1,
+        )
 
 
 

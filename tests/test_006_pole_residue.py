@@ -651,3 +651,94 @@ def test_evolutionary_fit_checks_number_of_bounds():
             number_complex_pairs=1,
             parameter_bounds=[(6.0, 8.0)],
         )
+
+
+def test_evolutionary_fit_recovers_mixed_poles_from_finite_wake():
+    frequencies = np.linspace(1.0e6, 3.0e7, 500)
+    wake_length = 50.0
+
+    expected_real_pole = -1.0e7
+    expected_complex_pole = -3.0e6 + 8.0e7j
+
+    expected_real_residue = 8.0e9
+    expected_complex_residue = 2.0e10 + 0.5e10j
+
+    poles = np.array(
+        [
+            expected_real_pole,
+            expected_complex_pole,
+            np.conj(expected_complex_pole),
+        ]
+    )
+
+    residues = np.array(
+        [
+            expected_real_residue,
+            expected_complex_residue,
+            np.conj(expected_complex_residue),
+        ]
+    )
+
+    finite_impedance = PoleResidue.finite_wake_impedance(
+        frequencies=frequencies,
+        poles=poles,
+        residues=residues,
+        wake_length=wake_length,
+    )
+
+    result = fit_poles_evolutionary(
+        frequencies=frequencies,
+        impedance=finite_impedance,
+        number_real_poles=1,
+        number_complex_pairs=1,
+        parameter_bounds=[
+            # Real decay rate
+            (
+                np.log10(5.0e6),
+                np.log10(2.0e7),
+            ),
+            # Complex decay rate
+            (
+                np.log10(1.0e6),
+                np.log10(1.0e7),
+            ),
+            # Complex angular frequency
+            (
+                np.log10(5.0e7),
+                np.log10(1.2e8),
+            ),
+        ],
+        wake_length=wake_length,
+        maxiter=300,
+        popsize=15,
+        tol=1.0e-9,
+        polish=True,
+        seed=9012,
+        workers=1,
+    )
+
+    np.testing.assert_allclose(
+        result.real_poles[0],
+        expected_real_pole,
+        rtol=1.0e-3,
+    )
+
+    np.testing.assert_allclose(
+        result.complex_poles[0],
+        expected_complex_pole,
+        rtol=1.0e-3,
+    )
+
+    np.testing.assert_allclose(
+        result.residue_fit.residues[0],
+        expected_real_residue,
+        rtol=1.0e-3,
+    )
+
+    np.testing.assert_allclose(
+        result.residue_fit.residues[1],
+        expected_complex_residue,
+        rtol=1.0e-3,
+    )
+
+    assert result.objective_value < 1.0e-8

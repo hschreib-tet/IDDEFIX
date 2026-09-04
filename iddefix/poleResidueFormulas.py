@@ -6,6 +6,7 @@ import numpy.typing as npt
 
 ArrayLike = npt.ArrayLike
 
+SPEED_OF_LIGHT = 299_792_458.0
 
 class PoleResidue:
     """Evaluate impedance and wake functions from poles and residues."""
@@ -37,6 +38,61 @@ class PoleResidue:
             axis=1,
         )
 
+    @staticmethod
+    def finite_wake_impedance(
+        frequencies: ArrayLike,
+        poles: ArrayLike,
+        residues: ArrayLike,
+        wake_length: float,
+    ) -> np.ndarray:
+        r"""Evaluate the impedance obtained from a finite wake.
+
+        The model is
+
+        Z_T(s) = sum_k r_k * (1 - exp(-(s - p_k) * T)) / (s - p_k),
+
+        with s = 2j*pi*f and T = wake_length/c.
+
+        Parameters
+        ----------
+        frequencies
+            Frequencies in Hz.
+        poles
+            Poles in rad/s.
+        residues
+            Residues corresponding to the poles.
+        wake_length
+            Simulated wake length in metres.
+
+        Returns
+        -------
+        numpy.ndarray
+            Complex finite-wake impedance.
+        """
+        frequencies = np.atleast_1d(np.asarray(frequencies, dtype=float))
+        poles = np.atleast_1d(np.asarray(poles, dtype=complex))
+        residues = np.atleast_1d(np.asarray(residues, dtype=complex))
+
+        if poles.size != residues.size:
+            raise ValueError("poles and residues must have the same length")
+
+        if wake_length < 0.0:
+            raise ValueError("wake_length must be non-negative")
+
+        s = 2j * np.pi * frequencies
+        duration = wake_length / SPEED_OF_LIGHT
+        denominator = s[:, None] - poles[None, :]
+
+        basis = (
+            -np.expm1(-denominator * duration)
+            / denominator
+        )
+
+        return np.sum(residues[None, :] * basis, axis=1)
+
+
+
+    
     @staticmethod
     def wake(
         times: ArrayLike,

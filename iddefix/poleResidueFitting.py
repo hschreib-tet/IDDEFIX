@@ -10,7 +10,10 @@ from functools import partial
 from scipy.linalg import lstsq
 from scipy.optimize import differential_evolution
 
-from .poleResidueFormulas import SPEED_OF_LIGHT
+from .poleResidueFormulas import (
+    SPEED_OF_LIGHT,
+    impedance_plane_factor,
+)
 
 
 ArrayLike = npt.ArrayLike
@@ -240,18 +243,35 @@ def _pole_basis(
     frequencies: np.ndarray,
     poles: np.ndarray,
     wake_length: float | None,
+    plane: str = "longitudinal",
 ) -> np.ndarray:
     """Construct the impedance basis for individual poles."""
+    plane_factor = impedance_plane_factor(
+        plane
+    )
+
     s = 2j * np.pi * frequencies
-    denominator = s[:, None] - poles[None, :]
+
+    denominator = (
+        s[:, None]
+        - poles[None, :]
+    )
 
     if wake_length is None:
-        return 1.0 / denominator
+        return (
+            plane_factor
+            / denominator
+        )
 
-    duration = wake_length / SPEED_OF_LIGHT
+    duration = (
+        wake_length
+        / SPEED_OF_LIGHT
+    )
 
-    return (
-        -np.expm1(-denominator * duration)
+    return plane_factor * (
+        -np.expm1(
+            -denominator * duration
+        )
         / denominator
     )
 
@@ -265,6 +285,7 @@ def fit_residues(
     weights: ArrayLike | None = None,
     fit_direct_term: bool = False,
     enforce_zero_dc: bool = False,
+    plane: str = "longitudinal",
 ) -> ResidueFitResult:
     """Determine optimal residues for fixed poles.
 
@@ -333,6 +354,7 @@ def fit_residues(
             frequencies,
             real_poles,
             wake_length,
+            plane,
         )
 
         columns.extend(
@@ -345,12 +367,14 @@ def fit_residues(
             frequencies,
             complex_poles,
             wake_length,
+            plane,
         )
 
         negative_basis = _pole_basis(
             frequencies,
             np.conj(complex_poles),
             wake_length,
+            plane,
         )
 
         for index in range(complex_poles.size):
@@ -367,7 +391,11 @@ def fit_residues(
 
     if fit_direct_term:
         columns.append(
-            np.ones(frequencies.size, dtype=complex)
+            impedance_plane_factor(plane)
+            * np.ones(
+                frequencies.size,
+                dtype=complex,
+            )
         )
 
     design_matrix = np.column_stack(columns)
@@ -552,10 +580,12 @@ def fit_residues(
         frequencies,
         full_poles,
         wake_length,
+        plane,
     )
-
     fitted_impedance = (
-        direct_term + full_basis @ full_residues
+        impedance_plane_factor(plane)
+        * direct_term
+        + full_basis @ full_residues
     )
 
     squared_error = float(
@@ -590,6 +620,7 @@ def pole_objective(
     weights: ArrayLike | None = None,
     fit_direct_term: bool = False,
     enforce_zero_dc: bool = False,
+    plane: str = "longitudinal",
 ) -> float:
     """Evaluate the normalized fitting error for candidate poles."""
     impedance = np.atleast_1d(
@@ -612,6 +643,7 @@ def pole_objective(
             weights=weights,
             fit_direct_term=fit_direct_term,
             enforce_zero_dc=enforce_zero_dc,
+            plane=plane,
         )
     except (ValueError, np.linalg.LinAlgError):
         return np.inf
@@ -663,6 +695,7 @@ def fit_poles_evolutionary(
     magnitude_floor: float | None = None,
     fit_direct_term: bool = False,
     enforce_zero_dc: bool = False,
+    plane: str = "longitudinal",
 ) -> PoleOptimizationResult:
     """Fit pole locations using Differential Evolution.
 
@@ -728,6 +761,7 @@ def fit_poles_evolutionary(
         weights=weights,
         fit_direct_term=fit_direct_term,
         enforce_zero_dc=enforce_zero_dc,
+        plane=plane,
     )
 
     updating = "immediate" if workers == 1 else "deferred"
@@ -763,6 +797,7 @@ def fit_poles_evolutionary(
         weights=weights,
         fit_direct_term=fit_direct_term,
         enforce_zero_dc=enforce_zero_dc,
+        plane=plane,
     )
 
     return PoleOptimizationResult(

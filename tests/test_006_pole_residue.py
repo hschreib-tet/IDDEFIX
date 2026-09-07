@@ -1,7 +1,10 @@
 import numpy as np
 
 from iddefix.poleResidueFormulas import PoleResidue
-from iddefix.resonatorFormulas import Impedances
+from iddefix.resonatorFormulas import (
+    Impedances,
+    Wakes,
+)
 from iddefix.poleResidueFitting import (
     build_fit_weights,
     decode_log_poles,
@@ -924,4 +927,162 @@ def test_finite_wake_impedance_includes_direct_term():
     np.testing.assert_allclose(
         with_direct_term - without_direct_term,
         direct_term,
+    )
+
+
+def test_transverse_resonator_matches_pole_residue():
+    frequencies = np.linspace(
+        1.0e6,
+        2.0e9,
+        1000,
+    )
+
+    times = np.linspace(
+        1.0e-15,
+        5.0e-9,
+        1000,
+    )
+
+    Rs = 1.0e6
+    Q = 5.0
+    resonant_frequency = 8.0e8
+
+    omega_r = (
+        2.0
+        * np.pi
+        * resonant_frequency
+    )
+
+    poles = np.roots(
+        [
+            1.0,
+            omega_r / Q,
+            omega_r**2,
+        ]
+    )
+
+    scale = (
+        Rs
+        * omega_r**2
+        / Q
+    )
+
+    residues = np.array(
+        [
+            scale
+            / (
+                poles[0]
+                - poles[1]
+            ),
+            scale
+            / (
+                poles[1]
+                - poles[0]
+            ),
+        ]
+    )
+
+    expected_impedance = (
+        Impedances.Resonator_transverse_imp(
+            frequencies,
+            Rs,
+            Q,
+            resonant_frequency,
+        )
+    )
+
+    calculated_impedance = (
+        PoleResidue.impedance(
+            frequencies,
+            poles,
+            residues,
+            plane="transverse",
+        )
+    )
+
+    expected_wake = (
+        Wakes.Resonator_transverse_wake(
+            times,
+            Rs,
+            Q,
+            resonant_frequency,
+        )
+    )
+
+    calculated_wake = PoleResidue.wake(
+        times,
+        poles,
+        residues,
+    )
+
+    np.testing.assert_allclose(
+        calculated_impedance,
+        expected_impedance,
+        rtol=1.0e-12,
+        atol=1.0e-8,
+    )
+
+    np.testing.assert_allclose(
+        calculated_wake,
+        expected_wake,
+        rtol=1.0e-11,
+        atol=1.0e-5,
+    )
+
+
+def test_transverse_least_squares_recovers_residues():
+    frequencies = np.linspace(
+        1.0e6,
+        2.0e8,
+        500,
+    )
+
+    complex_pole = (
+        -5.0e6
+        + 4.0e7j
+    )
+
+    complex_residue = (
+        2.0e10
+        + 0.7e10j
+    )
+
+    impedance = PoleResidue.impedance(
+        frequencies,
+        poles=[
+            complex_pole,
+            np.conj(complex_pole),
+        ],
+        residues=[
+            complex_residue,
+            np.conj(complex_residue),
+        ],
+        plane="transverse",
+    )
+
+    result = fit_residues(
+        frequencies=frequencies,
+        impedance=impedance,
+        real_poles=[],
+        complex_poles=[
+            complex_pole
+        ],
+        plane="transverse",
+    )
+
+    np.testing.assert_allclose(
+        result.residues,
+        [
+            complex_residue,
+            np.conj(complex_residue),
+        ],
+        rtol=1.0e-11,
+        atol=1.0e-5,
+    )
+
+    np.testing.assert_allclose(
+        result.fitted_impedance,
+        impedance,
+        rtol=1.0e-11,
+        atol=1.0e-7,
     )

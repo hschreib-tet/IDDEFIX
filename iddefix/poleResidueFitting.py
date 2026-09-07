@@ -7,6 +7,7 @@ import numpy.typing as npt
 
 from functools import partial
 
+from scipy.linalg import lstsq
 from scipy.optimize import differential_evolution
 
 from .poleResidueFormulas import SPEED_OF_LIGHT
@@ -263,6 +264,7 @@ def fit_residues(
     wake_length: float | None = None,
     weights: ArrayLike | None = None,
     fit_direct_term: bool = False,
+    enforce_zero_dc: bool = False,
 ) -> ResidueFitResult:
     """Determine optimal residues for fixed poles.
 
@@ -390,11 +392,119 @@ def fit_residues(
         stacked_weights * real_right_hand_side
     )
 
-    coefficients, _, rank, _ = np.linalg.lstsq(
-        weighted_system_matrix,
-        weighted_right_hand_side,
-        rcond=None,
-    )
+    if enforce_zero_dc:
+        dc_columns = []
+
+        if real_poles.size:
+            dc_columns.extend(
+                -1.0 / real_poles.real
+            )
+
+        for pole in complex_poles:
+            phi_positive = -1.0 / pole
+            phi_negative = -1.0 / np.conj(pole)
+
+            dc_columns.append(
+                (
+                    phi_positive
+                    + phi_negative
+                ).real
+            )
+
+            dc_columns.append(
+                (
+                    1j
+                    * (
+                        phi_positive
+                        - phi_negative
+                    )
+                ).real
+            )
+
+        if fit_direct_term:
+            dc_columns.append(1.0)
+
+        dc_constraint = np.asarray(
+            dc_columns,
+            dtype=float,
+        )
+
+        # Eliminate the coefficient with the largest constraint
+        # coefficient. This avoids division by a small value.
+        pivot_index = int(
+            np.argmax(
+                np.abs(dc_constraint)
+            )
+        )
+
+        pivot_value = dc_constraint[
+            pivot_index
+        ]
+
+        free_indices = np.arange(
+            dc_constraint.size
+        ) != pivot_index
+
+        free_constraint = dc_constraint[
+            free_indices
+        ]
+
+        pivot_column = weighted_system_matrix[
+            :,
+            pivot_index,
+        ]
+
+        free_matrix = weighted_system_matrix[
+            :,
+            free_indices,
+        ]
+
+        # Substitute
+        #
+        # x_pivot = -(c_free @ x_free) / c_pivot
+        #
+        # into A @ x.
+        reduced_system_matrix = (
+            free_matrix
+            - np.outer(
+                pivot_column,
+                free_constraint / pivot_value,
+            )
+        )
+
+        reduced_coefficients, _, rank, _ = lstsq(
+            reduced_system_matrix,
+            weighted_right_hand_side,
+            lapack_driver="gelsy",
+            check_finite=False,
+        )
+
+        coefficients = np.empty(
+            dc_constraint.size,
+            dtype=float,
+        )
+
+        coefficients[
+            free_indices
+        ] = reduced_coefficients
+
+        coefficients[
+            pivot_index
+        ] = (
+            -np.dot(
+                free_constraint,
+                reduced_coefficients,
+            )
+            / pivot_value
+        )
+
+    else:
+        coefficients, _, rank, _ = lstsq(
+            weighted_system_matrix,
+            weighted_right_hand_side,
+            lapack_driver="gelsy",
+            check_finite=False,
+        )
 
     number_real = real_poles.size
 
@@ -479,6 +589,7 @@ def pole_objective(
     wake_length: float | None = None,
     weights: ArrayLike | None = None,
     fit_direct_term: bool = False,
+    enforce_zero_dc: bool = False,
 ) -> float:
     """Evaluate the normalized fitting error for candidate poles."""
     impedance = np.atleast_1d(
@@ -500,6 +611,7 @@ def pole_objective(
             wake_length=wake_length,
             weights=weights,
             fit_direct_term=fit_direct_term,
+            enforce_zero_dc=enforce_zero_dc,
         )
     except (ValueError, np.linalg.LinAlgError):
         return np.inf
@@ -550,6 +662,7 @@ def fit_poles_evolutionary(
     frequency_weighting: str = "samples",
     magnitude_floor: float | None = None,
     fit_direct_term: bool = False,
+    enforce_zero_dc: bool = False,
 ) -> PoleOptimizationResult:
     """Fit pole locations using Differential Evolution.
 
@@ -614,6 +727,7 @@ def fit_poles_evolutionary(
         wake_length=wake_length,
         weights=weights,
         fit_direct_term=fit_direct_term,
+        enforce_zero_dc=enforce_zero_dc,
     )
 
     updating = "immediate" if workers == 1 else "deferred"
@@ -648,6 +762,7 @@ def fit_poles_evolutionary(
         wake_length=wake_length,
         weights=weights,
         fit_direct_term=fit_direct_term,
+        enforce_zero_dc=enforce_zero_dc,
     )
 
     return PoleOptimizationResult(

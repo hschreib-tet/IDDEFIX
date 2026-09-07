@@ -215,8 +215,8 @@ def main():
         )
 
         model.run_differential_evolution(
-            maxiter=1000,
-            popsize=12,
+            maxiter=10000,
+            popsize=90,
             mutation=(0.1, 0.5),
             crossover_rate=0.8,
             tol=1.0e-7,

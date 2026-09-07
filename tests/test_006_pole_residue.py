@@ -296,6 +296,43 @@ def test_least_squares_recovers_finite_wake_residues():
     )
 
 
+def test_residue_fit_can_enforce_zero_dc():
+    frequencies = np.linspace(1.0e6, 2.0e8, 500)
+    wake_length = 30.0
+
+    real_poles = np.array([-2.0e7])
+    complex_poles = np.array([-5.0e6 + 4.0e7j])
+
+    target_impedance = (
+        3.0
+        + 0.2j
+        + 2.0e8 / (2j * np.pi * frequencies + 1.0e7)
+    )
+
+    result = fit_residues(
+        frequencies=frequencies,
+        impedance=target_impedance,
+        real_poles=real_poles,
+        complex_poles=complex_poles,
+        wake_length=wake_length,
+        fit_direct_term=True,
+        enforce_zero_dc=True,
+    )
+
+    dc_impedance = PoleResidue.impedance(
+        frequencies=[0.0],
+        poles=result.poles,
+        residues=result.residues,
+        direct_term=result.direct_term,
+    )
+
+    np.testing.assert_allclose(
+        dc_impedance,
+        0.0,
+        atol=1.0e-6,
+    )
+
+
 def test_residue_fit_rejects_unstable_poles():
     with np.testing.assert_raises(ValueError):
         fit_residues(

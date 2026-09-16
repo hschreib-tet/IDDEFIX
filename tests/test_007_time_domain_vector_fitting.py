@@ -7,6 +7,8 @@ from iddefix.timeDomainVectorFitting import (
     _canonicalize_conjugate_poles,
     _restore_conjugate_residues,
     _sigma_zeros_from_real_coefficients,
+    evaluate_frequency_response,
+    evaluate_partially_decayed_frequency_response,
     recursive_exponential_convolution,
     time_domain_vector_fit,
 )
@@ -382,4 +384,321 @@ def test_real_sigma_zero_matrix_matches_complex_form():
         real_form_zeros[real_indices],
         rtol=1.0e-12,
         atol=1.0e-6,
+    )
+
+
+def test_multi_response_fit_recovers_common_poles():
+    times = np.linspace(
+        0.0,
+        5.0e-9,
+        2001,
+    )
+    time_step = times[1] - times[0]
+
+    # One excitation is shared by both response channels.
+    input_signal = np.exp(-0.5 * ((times - 0.5e-9) / 0.12e-9) ** 2)
+
+    positive_pole = -8.0e7 + 1j * 2.0 * np.pi * 1.1e9
+    true_poles = np.array(
+        [
+            positive_pole,
+            np.conj(positive_pole),
+        ]
+    )
+
+    positive_residues = np.array(
+        [
+            5.0e10 + 2.0e10j,
+            -1.5e10 + 4.0e10j,
+        ]
+    )
+    true_residues = np.column_stack(
+        [
+            positive_residues,
+            np.conj(positive_residues),
+        ]
+    )
+    true_direct_terms = np.array([0.2, -0.4])
+
+    filtered_inputs = np.column_stack(
+        [
+            recursive_exponential_convolution(
+                input_signal,
+                pole,
+                time_step,
+            )
+            for pole in true_poles
+        ]
+    )
+    output_signal = np.column_stack(
+        [
+            true_direct_terms[response_index] * input_signal
+            + filtered_inputs @ true_residues[response_index]
+            for response_index in range(2)
+        ]
+    ).real
+
+    initial_positive_pole = -3.0e8 + 1j * 2.0 * np.pi * 0.9e9
+    initial_poles = np.array(
+        [
+            initial_positive_pole,
+            np.conj(initial_positive_pole),
+        ]
+    )
+
+    result = time_domain_vector_fit(
+        times=times,
+        input_signal=input_signal,
+        output_signal=output_signal,
+        initial_poles=initial_poles,
+        maximum_iterations=20,
+        tolerance=1.0e-10,
+        channel_weights="rms",
+    )
+
+    fitted_poles = match_poles(true_poles, result.poles)
+    pole_error = np.abs(fitted_poles - true_poles) / np.abs(true_poles)
+    output_errors = np.linalg.norm(
+        result.fitted_output - output_signal,
+        axis=0,
+    ) / np.linalg.norm(output_signal, axis=0)
+
+    assert result.residues.shape == (2, 2)
+    assert result.direct_term.shape == (2,)
+    assert result.proportional_term.shape == (2,)
+    assert result.fitted_output.shape == output_signal.shape
+    assert np.max(pole_error) < 1.0e-5
+    assert np.max(output_errors) < 1.0e-8
+
+    for response_index in range(2):
+        assert result.residues[response_index, 1] == np.conj(
+            result.residues[response_index, 0]
+        )
+
+
+def test_multi_response_accepts_separate_input_signals():
+    times = np.linspace(0.0, 4.0e-9, 1201)
+    time_step = times[1] - times[0]
+
+    input_signals = np.column_stack(
+        [
+            np.exp(-0.5 * ((times - 0.5e-9) / 0.12e-9) ** 2),
+            np.exp(-0.5 * ((times - 0.8e-9) / 0.18e-9) ** 2),
+        ]
+    )
+
+    positive_pole = -1.2e8 + 1j * 2.0 * np.pi * 0.8e9
+    true_poles = np.array(
+        [
+            positive_pole,
+            np.conj(positive_pole),
+        ]
+    )
+    positive_residues = np.array(
+        [
+            3.0e10 + 1.0e10j,
+            1.0e10 - 2.5e10j,
+        ]
+    )
+
+    output_signal = np.empty_like(input_signals)
+    for response_index in range(2):
+        filtered_input = np.column_stack(
+            [
+                recursive_exponential_convolution(
+                    input_signals[:, response_index],
+                    pole,
+                    time_step,
+                )
+                for pole in true_poles
+            ]
+        )
+        residues = np.array(
+            [
+                positive_residues[response_index],
+                np.conj(positive_residues[response_index]),
+            ]
+        )
+        output_signal[:, response_index] = (filtered_input @ residues).real
+
+    result = time_domain_vector_fit(
+        times=times,
+        input_signal=input_signals,
+        output_signal=output_signal,
+        initial_poles=true_poles,
+        maximum_iterations=5,
+        tolerance=1.0e-10,
+    )
+
+    relative_error = np.linalg.norm(
+        result.fitted_output - output_signal
+    ) / np.linalg.norm(output_signal)
+
+    assert relative_error < 1.0e-8
+
+
+def test_multi_response_validates_channel_weights():
+    times = np.linspace(0.0, 1.0, 11)
+    input_signal = np.ones(times.size)
+    output_signal = np.ones((times.size, 2))
+    poles = np.array([-1.0])
+
+    with pytest.raises(ValueError, match="one value per response"):
+        time_domain_vector_fit(
+            times=times,
+            input_signal=input_signal,
+            output_signal=output_signal,
+            initial_poles=poles,
+            maximum_iterations=1,
+            channel_weights=np.ones(3),
+        )
+
+
+def test_multi_response_frequency_evaluation_matches_scalar_calls():
+    frequencies = np.linspace(0.0, 2.0e9, 101)
+    positive_pole = -2.0e8 + 1j * 3.0e9
+    poles = np.array(
+        [
+            positive_pole,
+            np.conj(positive_pole),
+        ]
+    )
+    positive_residues = np.array(
+        [
+            3.0e9 + 1.0e9j,
+            -2.0e9 + 4.0e9j,
+        ]
+    )
+    residues = np.column_stack(
+        [
+            positive_residues,
+            np.conj(positive_residues),
+        ]
+    )
+    direct_terms = np.array([0.5, -0.25])
+    proportional_terms = np.array([1.0e-11, -2.0e-11])
+
+    multi_fully_decayed = evaluate_frequency_response(
+        frequencies,
+        poles,
+        residues,
+        direct_term=direct_terms,
+        proportional_term=proportional_terms,
+    )
+    multi_partially_decayed = evaluate_partially_decayed_frequency_response(
+        frequencies,
+        poles,
+        residues,
+        wake_length=2.0,
+        direct_term=direct_terms,
+        proportional_term=proportional_terms,
+    )
+
+    for response_index in range(2):
+        scalar_fully_decayed = evaluate_frequency_response(
+            frequencies,
+            poles,
+            residues[response_index],
+            direct_term=direct_terms[response_index],
+            proportional_term=proportional_terms[response_index],
+        )
+        scalar_partially_decayed = evaluate_partially_decayed_frequency_response(
+            frequencies,
+            poles,
+            residues[response_index],
+            wake_length=2.0,
+            direct_term=direct_terms[response_index],
+            proportional_term=proportional_terms[response_index],
+        )
+
+        np.testing.assert_allclose(
+            multi_fully_decayed[:, response_index],
+            scalar_fully_decayed,
+        )
+        np.testing.assert_allclose(
+            multi_partially_decayed[:, response_index],
+            scalar_partially_decayed,
+        )
+
+
+def test_multi_response_fits_response_specific_polynomial_terms():
+    times = np.linspace(0.0, 3.0e-9, 1501)
+    time_step = times[1] - times[0]
+    input_signal = np.exp(-0.5 * ((times - 0.5e-9) / 0.12e-9) ** 2)
+    input_derivative = np.gradient(
+        input_signal,
+        time_step,
+        edge_order=2,
+    )
+
+    positive_pole = -1.0e8 + 1j * 2.0 * np.pi * 1.0e9
+    poles = np.array(
+        [
+            positive_pole,
+            np.conj(positive_pole),
+        ]
+    )
+    positive_residues = np.array(
+        [
+            2.0e10 + 1.0e10j,
+            -1.0e10 + 3.0e10j,
+        ]
+    )
+    residues = np.column_stack(
+        [
+            positive_residues,
+            np.conj(positive_residues),
+        ]
+    )
+    direct_terms = np.array([0.3, -0.2])
+    proportional_terms = np.array([2.0e-11, -1.0e-11])
+
+    filtered_inputs = np.column_stack(
+        [
+            recursive_exponential_convolution(
+                input_signal,
+                pole,
+                time_step,
+            )
+            for pole in poles
+        ]
+    )
+    output_signal = np.column_stack(
+        [
+            direct_terms[response_index] * input_signal
+            + proportional_terms[response_index] * input_derivative
+            + filtered_inputs @ residues[response_index]
+            for response_index in range(2)
+        ]
+    ).real
+
+    result = time_domain_vector_fit(
+        times=times,
+        input_signal=input_signal,
+        output_signal=output_signal,
+        initial_poles=poles,
+        maximum_iterations=5,
+        tolerance=1.0e-10,
+        fit_direct_term=True,
+        fit_proportional_term=True,
+        channel_weights="rms",
+    )
+
+    np.testing.assert_allclose(
+        result.direct_term.real,
+        direct_terms,
+        rtol=1.0e-7,
+        atol=1.0e-9,
+    )
+    np.testing.assert_allclose(
+        result.proportional_term.real,
+        proportional_terms,
+        rtol=1.0e-7,
+        atol=1.0e-20,
+    )
+    np.testing.assert_allclose(
+        result.fitted_output.real,
+        output_signal,
+        rtol=1.0e-8,
+        atol=1.0e-8,
     )

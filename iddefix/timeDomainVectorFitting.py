@@ -1,4 +1,4 @@
-"""Minimal scalar implementation of Time-Domain Vector Fitting."""
+"""Scalar and multi-response Time-Domain Vector Fitting."""
 
 from dataclasses import dataclass
 
@@ -9,15 +9,21 @@ from scipy.optimize import linear_sum_assignment
 
 @dataclass
 class TimeDomainVectorFitResult:
-    """Result of a scalar Time-Domain Vector Fitting calculation."""
+    """Result of a Time-Domain Vector Fitting calculation.
+
+    Scalar fits retain the historical one-dimensional result shapes.
+    For a multi-response fit, residues have shape ``(responses, poles)``,
+    fitted_output has shape ``(samples, responses)``, and the direct and
+    proportional terms have shape ``(responses,)``.
+    """
 
     poles: NDArray[np.complex128]
     residues: NDArray[np.complex128]
-    direct_term: complex
+    direct_term: complex | NDArray[np.complex128]
     fitted_output: NDArray[np.complex128]
     relocation_errors: list[float]
     iterations: int
-    proportional_term: complex = 0.0 + 0.0j
+    proportional_term: complex | NDArray[np.complex128] = 0.0 + 0.0j
 
 
 def sampled_time_derivative(
@@ -629,14 +635,15 @@ def time_domain_vector_fit(
     weights: ArrayLike | None = None,
     fit_direct_term: bool = True,
     fit_proportional_term: bool = False,
+    channel_weights: ArrayLike | str | None = None,
 ) -> TimeDomainVectorFitResult:
-    r"""Fit a scalar rational model to time-domain input/output data.
+    r"""Fit rational models with a common pole set to time-domain data.
 
     The identified transfer function is
 
-        H(s) = direct_term
-               + proportional_term * s
-               + sum(residue_n / (s - pole_n)).
+        H_m(s) = direct_term_m
+                 + proportional_term_m * s
+                 + sum(residue_mn / (s - pole_n)).
 
     Real input and output signals are assumed. Real poles receive
     real residues, while complex poles and residues occur in exact
@@ -647,9 +654,15 @@ def time_domain_vector_fit(
     times:
         Equidistant time samples.
     input_signal:
-        Real excitation x(t).
+        Real excitation. A one-dimensional signal is shared by all
+        responses. A two-dimensional array must have shape
+        ``(number_samples, number_responses)`` and supplies one excitation
+        for each response.
     output_signal:
-        Real response y(t).
+        Real response signal with shape ``(number_samples,)`` or
+        ``(number_samples, number_responses)``. All responses share the
+        fitted pole set but receive independent residues and polynomial
+        terms.
     initial_poles:
         Starting poles for TD-VF pole relocation. Complex poles
         must be supplied in conjugate pairs.
@@ -669,12 +682,18 @@ def time_domain_vector_fit(
         In time domain this contributes
 
             proportional_term * derivative(input_signal).
+    channel_weights:
+        Optional response-channel weights. ``None`` gives every response
+        equal weight. ``"rms"`` scales each response inversely with its RMS
+        amplitude. An array supplies one non-negative weight per response.
 
     Returns
     -------
     TimeDomainVectorFitResult
-        Fitted poles, residues, direct and proportional terms and
-        the reconstructed output signal.
+        Fitted common poles, response-specific residues and polynomial
+        terms, and the reconstructed output signal. For scalar input/output
+        data, the historical scalar and one-dimensional result shapes are
+        retained.
     """
 
     # -----------------------------------------------------------------
@@ -703,11 +722,37 @@ def time_domain_vector_fit(
     if times.ndim != 1:
         raise ValueError("times must be one-dimensional.")
 
-    if input_signal.shape != times.shape:
-        raise ValueError("input_signal and times must have equal shapes.")
+    scalar_output = output_signal.ndim == 1
 
-    if output_signal.shape != times.shape:
-        raise ValueError("output_signal and times must have equal shapes.")
+    if scalar_output:
+        if output_signal.shape != times.shape:
+            raise ValueError("output_signal and times must have equal lengths.")
+        output_signal = output_signal[:, None]
+    elif output_signal.ndim == 2:
+        if output_signal.shape[0] != times.size:
+            raise ValueError("The first output_signal dimension must equal times.size.")
+        if output_signal.shape[1] == 0:
+            raise ValueError("output_signal must contain at least one response.")
+    else:
+        raise ValueError("output_signal must be one- or two-dimensional.")
+
+    number_responses = output_signal.shape[1]
+
+    if input_signal.ndim == 1:
+        if input_signal.shape != times.shape:
+            raise ValueError("input_signal and times must have equal lengths.")
+        input_signal = np.broadcast_to(
+            input_signal[:, None],
+            output_signal.shape,
+        ).copy()
+    elif input_signal.ndim == 2:
+        if input_signal.shape != output_signal.shape:
+            raise ValueError(
+                "A two-dimensional input_signal must have the same shape "
+                "as output_signal."
+            )
+    else:
+        raise ValueError("input_signal must be one- or two-dimensional.")
 
     minimum_samples = 3 if fit_proportional_term else 2
 
@@ -739,26 +784,28 @@ def time_domain_vector_fit(
     # Require real input and output signals
     # -----------------------------------------------------------------
 
-    input_scale = max(
-        np.max(np.abs(input_signal)),
+    input_scale = np.maximum(
+        np.max(np.abs(input_signal), axis=0),
         np.finfo(float).eps,
     )
 
-    output_scale = max(
-        np.max(np.abs(output_signal)),
+    output_scale = np.maximum(
+        np.max(np.abs(output_signal), axis=0),
         np.finfo(float).eps,
     )
 
-    relative_imaginary_input = np.max(np.abs(input_signal.imag)) / input_scale
+    relative_imaginary_input = np.max(np.abs(input_signal.imag), axis=0) / input_scale
 
-    relative_imaginary_output = np.max(np.abs(output_signal.imag)) / output_scale
+    relative_imaginary_output = (
+        np.max(np.abs(output_signal.imag), axis=0) / output_scale
+    )
 
-    if relative_imaginary_input > 1.0e-10:
+    if np.any(relative_imaginary_input > 1.0e-10):
         raise ValueError(
             "The real conjugate-pair formulation requires a real input signal."
         )
 
-    if relative_imaginary_output > 1.0e-10:
+    if np.any(relative_imaginary_output > 1.0e-10):
         raise ValueError(
             "The real conjugate-pair formulation requires a real output signal."
         )
@@ -818,6 +865,42 @@ def time_domain_vector_fit(
     weights = weights / np.sqrt(np.mean(weights**2))
 
     # -----------------------------------------------------------------
+    # Validate and normalize response-channel weights
+    # -----------------------------------------------------------------
+
+    if channel_weights is None:
+        channel_weights = np.ones(number_responses, dtype=float)
+    elif isinstance(channel_weights, str):
+        if channel_weights.lower() != "rms":
+            raise ValueError("channel_weights must be None, 'rms', or an array.")
+
+        response_rms = np.sqrt(np.mean(output_signal.real**2, axis=0))
+        maximum_rms = np.max(response_rms)
+        if maximum_rms == 0.0:
+            channel_weights = np.ones(number_responses, dtype=float)
+        else:
+            rms_floor = maximum_rms * 1.0e-12
+            informative_response = response_rms > rms_floor
+            channel_weights = np.zeros(number_responses, dtype=float)
+            channel_weights[informative_response] = (
+                1.0 / response_rms[informative_response]
+            )
+    else:
+        channel_weights = np.asarray(channel_weights, dtype=float)
+
+        if channel_weights.shape != (number_responses,):
+            raise ValueError("channel_weights must contain one value per response.")
+        if np.any(~np.isfinite(channel_weights)):
+            raise ValueError("channel_weights must contain only finite values.")
+        if np.any(channel_weights < 0.0):
+            raise ValueError("channel_weights must be non-negative.")
+        if not np.any(channel_weights > 0.0):
+            raise ValueError("At least one channel weight must be positive.")
+
+    channel_weights = channel_weights / np.max(channel_weights)
+    channel_weights = channel_weights / np.sqrt(np.mean(channel_weights**2))
+
+    # -----------------------------------------------------------------
     # Validate and canonicalize starting poles
     # -----------------------------------------------------------------
 
@@ -834,10 +917,15 @@ def time_domain_vector_fit(
     # -----------------------------------------------------------------
 
     if fit_proportional_term:
-        input_derivative = sampled_time_derivative(
-            input_signal,
-            time_step,
-        ).real
+        input_derivative = np.column_stack(
+            [
+                sampled_time_derivative(
+                    input_signal[:, response_index],
+                    time_step,
+                ).real
+                for response_index in range(number_responses)
+            ]
+        )
     else:
         input_derivative = None
 
@@ -848,27 +936,34 @@ def time_domain_vector_fit(
     relocation_errors = []
 
     for _ in range(maximum_iterations):
-        filtered_inputs = np.column_stack(
-            [
-                recursive_exponential_convolution(
-                    input_signal,
-                    pole,
-                    time_step,
-                )
-                for pole in poles
-            ]
-        )
+        filtered_inputs = []
+        filtered_outputs = []
 
-        filtered_outputs = np.column_stack(
-            [
-                recursive_exponential_convolution(
-                    output_signal,
-                    pole,
-                    time_step,
+        for response_index in range(number_responses):
+            filtered_inputs.append(
+                np.column_stack(
+                    [
+                        recursive_exponential_convolution(
+                            input_signal[:, response_index],
+                            pole,
+                            time_step,
+                        )
+                        for pole in poles
+                    ]
                 )
-                for pole in poles
-            ]
-        )
+            )
+            filtered_outputs.append(
+                np.column_stack(
+                    [
+                        recursive_exponential_convolution(
+                            output_signal[:, response_index],
+                            pole,
+                            time_step,
+                        )
+                        for pole in poles
+                    ]
+                )
+            )
 
         # Time-domain pole-relocation equation:
         #
@@ -894,38 +989,58 @@ def time_domain_vector_fit(
         # parts of the residue belonging to the pole with positive
         # imaginary part.
 
-        real_filtered_input_basis = _build_real_conjugate_basis(
-            filtered_inputs,
-            poles,
+        numerator_size = poles.size + 1 + int(fit_proportional_term)
+        relocation_matrix = np.zeros(
+            (
+                times.size * number_responses,
+                numerator_size * number_responses + poles.size,
+            ),
+            dtype=float,
+        )
+        relocation_right_hand_side = np.empty(
+            times.size * number_responses,
+            dtype=float,
+        )
+        relocation_row_weights = np.empty(
+            times.size * number_responses,
+            dtype=float,
         )
 
-        real_filtered_output_basis = _build_real_conjugate_basis(
-            -filtered_outputs,
-            poles,
-        )
+        for response_index in range(number_responses):
+            row_slice = slice(
+                response_index * times.size,
+                (response_index + 1) * times.size,
+            )
+            numerator_slice = slice(
+                response_index * numerator_size,
+                (response_index + 1) * numerator_size,
+            )
 
-        # c_inf is an auxiliary numerator coefficient of
-        # sigma(s) * H(s). It remains present even when the final
-        # physical direct term is disabled.
-        relocation_columns = [
-            input_signal,
-        ]
+            real_filtered_input_basis = _build_real_conjugate_basis(
+                filtered_inputs[response_index],
+                poles,
+            )
+            real_filtered_output_basis = _build_real_conjugate_basis(
+                -filtered_outputs[response_index],
+                poles,
+            )
 
-        if fit_proportional_term:
-            relocation_columns.append(input_derivative)
+            numerator_columns = [input_signal[:, response_index]]
+            if fit_proportional_term:
+                numerator_columns.append(input_derivative[:, response_index])
+            numerator_columns.append(real_filtered_input_basis)
 
-        relocation_columns.extend(
-            [
-                real_filtered_input_basis,
-                real_filtered_output_basis,
-            ]
-        )
+            relocation_matrix[row_slice, numerator_slice] = np.column_stack(
+                numerator_columns
+            )
+            relocation_matrix[row_slice, -poles.size :] = real_filtered_output_basis
+            relocation_right_hand_side[row_slice] = output_signal[:, response_index]
+            relocation_row_weights[row_slice] = (
+                weights * channel_weights[response_index]
+            )
 
-        relocation_matrix = np.column_stack(relocation_columns)
-
-        weighted_relocation_matrix = weights[:, None] * relocation_matrix
-
-        weighted_output_signal = weights * output_signal
+        weighted_relocation_matrix = relocation_row_weights[:, None] * relocation_matrix
+        weighted_output_signal = relocation_row_weights * relocation_right_hand_side
 
         relocation_coefficients = _scaled_least_squares(
             weighted_relocation_matrix,
@@ -983,80 +1098,74 @@ def time_domain_vector_fit(
     # Final residue-identification step
     # -----------------------------------------------------------------
 
-    filtered_inputs = np.column_stack(
-        [
-            recursive_exponential_convolution(
-                input_signal,
-                pole,
-                time_step,
+    residues = np.empty(
+        (number_responses, poles.size),
+        dtype=complex,
+    )
+    direct_term = np.zeros(number_responses, dtype=complex)
+    proportional_term = np.zeros(number_responses, dtype=complex)
+    fitted_output = np.empty(output_signal.shape, dtype=complex)
+
+    for response_index in range(number_responses):
+        filtered_input = np.column_stack(
+            [
+                recursive_exponential_convolution(
+                    input_signal[:, response_index],
+                    pole,
+                    time_step,
+                )
+                for pole in poles
+            ]
+        )
+        real_filtered_input_basis = _build_real_conjugate_basis(
+            filtered_input,
+            poles,
+        )
+
+        residue_columns = []
+        if fit_direct_term:
+            residue_columns.append(input_signal[:, response_index])
+        if fit_proportional_term:
+            residue_columns.append(input_derivative[:, response_index])
+        residue_columns.append(real_filtered_input_basis)
+
+        residue_matrix = np.column_stack(residue_columns)
+        response_weights = weights * channel_weights[response_index]
+        residue_coefficients = _scaled_least_squares(
+            response_weights[:, None] * residue_matrix,
+            response_weights * output_signal[:, response_index],
+        )
+
+        coefficient_index = 0
+        if fit_direct_term:
+            direct_term[response_index] = complex(
+                residue_coefficients[coefficient_index]
             )
-            for pole in poles
-        ]
-    )
+            coefficient_index += 1
+        if fit_proportional_term:
+            proportional_term[response_index] = complex(
+                residue_coefficients[coefficient_index]
+            )
+            coefficient_index += 1
 
-    real_filtered_input_basis = _build_real_conjugate_basis(
-        filtered_inputs,
-        poles,
-    )
+        residues[response_index] = _restore_conjugate_residues(
+            real_coefficients=residue_coefficients[coefficient_index:],
+            poles=poles,
+        )
+        fitted_output[:, response_index] = (
+            direct_term[response_index] * input_signal[:, response_index]
+            + filtered_input @ residues[response_index]
+        )
+        if fit_proportional_term:
+            fitted_output[:, response_index] += (
+                proportional_term[response_index] * input_derivative[:, response_index]
+            )
 
-    residue_columns = []
-
-    if fit_direct_term:
-        residue_columns.append(input_signal)
-
-    if fit_proportional_term:
-        residue_columns.append(input_derivative)
-
-    residue_columns.append(real_filtered_input_basis)
-
-    residue_matrix = np.column_stack(residue_columns)
-
-    weighted_residue_matrix = weights[:, None] * residue_matrix
-
-    weighted_output_signal = weights * output_signal
-
-    residue_coefficients = _scaled_least_squares(
-        weighted_residue_matrix,
-        weighted_output_signal,
-    )
-
-    coefficient_index = 0
-
-    # -----------------------------------------------------------------
-    # Extract direct and proportional terms
-    # -----------------------------------------------------------------
-
-    if fit_direct_term:
-        direct_term = complex(residue_coefficients[coefficient_index])
-
-        coefficient_index += 1
-    else:
-        direct_term = 0.0 + 0.0j
-
-    if fit_proportional_term:
-        proportional_term = complex(residue_coefficients[coefficient_index])
-
-        coefficient_index += 1
-    else:
-        proportional_term = 0.0 + 0.0j
-
-    # -----------------------------------------------------------------
-    # Restore real and complex-conjugate residues
-    # -----------------------------------------------------------------
-
-    residues = _restore_conjugate_residues(
-        real_coefficients=(residue_coefficients[coefficient_index:]),
-        poles=poles,
-    )
-
-    # -----------------------------------------------------------------
-    # Reconstruct the fitted output
-    # -----------------------------------------------------------------
-
-    fitted_output = direct_term * input_signal + filtered_inputs @ residues
-
-    if fit_proportional_term:
-        fitted_output += proportional_term * input_derivative
+    if scalar_output:
+        residues = residues[0]
+        direct_term = complex(direct_term[0])
+        proportional_term = complex(proportional_term[0])
+        fitted_output = fitted_output[:, 0]
 
     return TimeDomainVectorFitResult(
         poles=poles,
@@ -1069,13 +1178,73 @@ def time_domain_vector_fit(
     )
 
 
+def _prepare_frequency_response_coefficients(
+    poles: ArrayLike,
+    residues: ArrayLike,
+    direct_term: ArrayLike,
+    proportional_term: ArrayLike,
+) -> tuple[
+    NDArray[np.complex128],
+    NDArray[np.complex128],
+    NDArray[np.complex128],
+    NDArray[np.complex128],
+    bool,
+]:
+    """Validate scalar or multi-response pole-residue coefficients."""
+
+    poles = np.asarray(poles, dtype=complex)
+    residues = np.asarray(residues, dtype=complex)
+
+    if poles.ndim != 1:
+        raise ValueError("poles must be one-dimensional.")
+
+    scalar_response = residues.ndim == 1
+    if scalar_response:
+        if residues.shape != poles.shape:
+            raise ValueError("poles and residues must have equal shapes.")
+        residues = residues[None, :]
+    elif residues.ndim == 2:
+        if residues.shape[1] != poles.size:
+            raise ValueError(
+                "The last residues dimension must equal the number of poles."
+            )
+        if residues.shape[0] == 0:
+            raise ValueError("residues must contain at least one response.")
+    else:
+        raise ValueError("residues must be one- or two-dimensional.")
+
+    number_responses = residues.shape[0]
+
+    def prepare_polynomial_term(term, name):
+        term = np.asarray(term, dtype=complex)
+        if term.ndim == 0:
+            return np.full(number_responses, term.item(), dtype=complex)
+        if term.shape != (number_responses,):
+            raise ValueError(f"{name} must be scalar or have one value per response.")
+        return term
+
+    direct_term = prepare_polynomial_term(direct_term, "direct_term")
+    proportional_term = prepare_polynomial_term(
+        proportional_term,
+        "proportional_term",
+    )
+
+    return (
+        poles,
+        residues,
+        direct_term,
+        proportional_term,
+        scalar_response,
+    )
+
+
 def evaluate_frequency_response(
     frequencies: ArrayLike,
     poles: ArrayLike,
     residues: ArrayLike,
-    direct_term: complex = 0.0,
+    direct_term: ArrayLike = 0.0,
     fourier_sign: int = -1,
-    proportional_term: complex = 0.0,
+    proportional_term: ArrayLike = 0.0,
 ) -> NDArray[np.complex128]:
     r"""Evaluate a pole-residue transfer function in frequency domain.
 
@@ -1118,19 +1287,21 @@ def evaluate_frequency_response(
         dtype=complex,
     )
 
-    residues = np.asarray(
-        residues,
-        dtype=complex,
-    )
-
     if frequencies.ndim != 1:
         raise ValueError("frequencies must be one-dimensional.")
 
-    if poles.ndim != 1:
-        raise ValueError("poles must be one-dimensional.")
-
-    if residues.shape != poles.shape:
-        raise ValueError("poles and residues must have equal shapes.")
+    (
+        poles,
+        residues,
+        direct_term,
+        proportional_term,
+        scalar_response,
+    ) = _prepare_frequency_response_coefficients(
+        poles,
+        residues,
+        direct_term,
+        proportional_term,
+    )
 
     if fourier_sign not in (-1, 1):
         raise ValueError("fourier_sign must be either -1 or +1.")
@@ -1140,22 +1311,14 @@ def evaluate_frequency_response(
     # exp(-j omega t) convention -> s = +j omega
     s = -fourier_sign * 1j * angular_frequencies
 
+    basis = 1.0 / (s[:, None] - poles[None, :])
     response = (
-        np.full(
-            frequencies.shape,
-            direct_term,
-            dtype=complex,
-        )
-        + proportional_term * s
+        direct_term[None, :]
+        + s[:, None] * proportional_term[None, :]
+        + basis @ residues.T
     )
 
-    for pole, residue in zip(
-        poles,
-        residues,
-    ):
-        response += residue / (s - pole)
-
-    return response
+    return response[:, 0] if scalar_response else response
 
 
 def evaluate_partially_decayed_frequency_response(
@@ -1163,9 +1326,9 @@ def evaluate_partially_decayed_frequency_response(
     poles: ArrayLike,
     residues: ArrayLike,
     wake_length: float,
-    direct_term: complex = 0.0,
+    direct_term: ArrayLike = 0.0,
     fourier_sign: int = -1,
-    proportional_term: complex = 0.0,
+    proportional_term: ArrayLike = 0.0,
 ) -> NDArray[np.complex128]:
     r"""Evaluate a finite-window pole-residue transfer function.
 
@@ -1189,21 +1352,23 @@ def evaluate_partially_decayed_frequency_response(
         dtype=complex,
     )
 
-    residues = np.asarray(
-        residues,
-        dtype=complex,
-    )
-
     wake_length = float(wake_length)
 
     if frequencies.ndim != 1:
         raise ValueError("frequencies must be one-dimensional.")
 
-    if poles.ndim != 1:
-        raise ValueError("poles must be one-dimensional.")
-
-    if residues.shape != poles.shape:
-        raise ValueError("poles and residues must have equal shapes.")
+    (
+        poles,
+        residues,
+        direct_term,
+        proportional_term,
+        scalar_response,
+    ) = _prepare_frequency_response_coefficients(
+        poles,
+        residues,
+        direct_term,
+        proportional_term,
+    )
 
     if not np.all(np.isfinite(frequencies)):
         raise ValueError("frequencies must contain only finite values.")
@@ -1229,20 +1394,13 @@ def evaluate_partially_decayed_frequency_response(
 
     wake_time = wake_length / c_light
 
+    basis = (1.0 - np.exp((poles[None, :] - s[:, None]) * wake_time)) / (
+        s[:, None] - poles[None, :]
+    )
     response = (
-        np.full(
-            frequencies.shape,
-            direct_term,
-            dtype=complex,
-        )
-        + proportional_term * s
+        direct_term[None, :]
+        + s[:, None] * proportional_term[None, :]
+        + basis @ residues.T
     )
 
-    for pole, residue in zip(
-        poles,
-        residues,
-        strict=True,
-    ):
-        response += residue * (1.0 - np.exp((pole - s) * wake_time)) / (s - pole)
-
-    return response
+    return response[:, 0] if scalar_response else response

@@ -26,10 +26,7 @@ def gaussian_pulse(
 ):
     """Return the Gaussian excitation signal."""
 
-    return np.exp(
-        -0.5
-        * ((times - center) / sigma) ** 2
-    )
+    return np.exp(-0.5 * ((times - center) / sigma) ** 2)
 
 
 def generate_reference_response(
@@ -71,10 +68,7 @@ def generate_reference_response(
     )
 
     if not solution.success:
-        raise RuntimeError(
-            "Reference integration failed: "
-            + solution.message
-        )
+        raise RuntimeError("Reference integration failed: " + solution.message)
 
     output_signal = np.sum(
         residues[:, None] * solution.y,
@@ -90,19 +84,12 @@ def match_poles(
 ):
     """Match fitted poles to reference poles."""
 
-    distances = np.abs(
-        fitted_poles[:, None]
-        - reference_poles[None, :]
-    )
+    distances = np.abs(fitted_poles[:, None] - reference_poles[None, :])
 
-    fitted_indices, reference_indices = (
-        linear_sum_assignment(distances)
-    )
+    fitted_indices, reference_indices = linear_sum_assignment(distances)
 
     ordered_poles = np.empty_like(reference_poles)
-    ordered_poles[reference_indices] = fitted_poles[
-        fitted_indices
-    ]
+    ordered_poles[reference_indices] = fitted_poles[fitted_indices]
 
     return ordered_poles
 
@@ -118,20 +105,16 @@ def evaluate_fitted_model(
 
     time_step = times[1] - times[0]
 
-    output_signal = (
-        direct_term * input_signal.astype(complex)
-    )
+    output_signal = direct_term * input_signal.astype(complex)
 
     for pole, residue in zip(
         poles,
         residues,
     ):
-        filtered_input = (
-            recursive_exponential_convolution(
-                input_signal,
-                pole,
-                time_step,
-            )
+        filtered_input = recursive_exponential_convolution(
+            input_signal,
+            pole,
+            time_step,
         )
 
         output_signal += residue * filtered_input
@@ -145,10 +128,7 @@ def normalized_l2_error(
 ):
     """Calculate a normalized L2 error."""
 
-    return (
-        np.linalg.norm(approximation - reference)
-        / np.linalg.norm(reference)
-    )
+    return np.linalg.norm(approximation - reference) / np.linalg.norm(reference)
 
 
 def main():
@@ -163,10 +143,8 @@ def main():
 
     true_poles = np.array(
         [
-            -8.0e7
-            + 1j * 2.0 * np.pi * 1.1e9,
-            -8.0e7
-            - 1j * 2.0 * np.pi * 1.1e9,
+            -8.0e7 + 1j * 2.0 * np.pi * 1.1e9,
+            -8.0e7 - 1j * 2.0 * np.pi * 1.1e9,
         ]
     )
 
@@ -186,10 +164,8 @@ def main():
     # Deliberately inaccurate starting poles
     initial_poles = np.array(
         [
-            -3.0e8
-            + 1j * 2.0 * np.pi * 0.9e9,
-            -3.0e8
-            - 1j * 2.0 * np.pi * 0.9e9,
+            -3.0e8 + 1j * 2.0 * np.pi * 0.9e9,
+            -3.0e8 - 1j * 2.0 * np.pi * 0.9e9,
         ]
     )
 
@@ -230,10 +206,7 @@ def main():
             result.poles,
         )
 
-        pole_errors = (
-            np.abs(fitted_poles - true_poles)
-            / np.abs(true_poles)
-        )
+        pole_errors = np.abs(fitted_poles - true_poles) / np.abs(true_poles)
 
         reconstructed_output = evaluate_fitted_model(
             times=times,
@@ -257,9 +230,8 @@ def main():
             reconstructed_real[extrapolation_mask],
         )
 
-        imaginary_fraction = (
-            np.linalg.norm(reconstructed_output.imag)
-            / np.linalg.norm(reference_output)
+        imaginary_fraction = np.linalg.norm(reconstructed_output.imag) / np.linalg.norm(
+            reference_output
         )
 
         results.append(
@@ -277,38 +249,18 @@ def main():
 
         print()
         print("-" * 72)
-        print(
-            "Observation time: "
-            f"{observation_time * 1.0e9:.3f} ns"
-        )
-        print(
-            "T / tau: "
-            f"{observation_time / decay_time:.3f}"
-        )
-        print(
-            f"Relocation iterations: {result.iterations}"
-        )
+        print(f"Observation time: {observation_time * 1.0e9:.3f} ns")
+        print(f"T / tau: {observation_time / decay_time:.3f}")
+        print(f"Relocation iterations: {result.iterations}")
 
         print("Fitted poles:")
         for pole in fitted_poles:
             print(f"  {pole:.8e}")
 
-        print(
-            "Maximum relative pole error: "
-            f"{np.max(pole_errors):.6e}"
-        )
-        print(
-            "Fit-window L2 error: "
-            f"{fit_error:.6e}"
-        )
-        print(
-            "Extrapolation L2 error: "
-            f"{extrapolation_error:.6e}"
-        )
-        print(
-            "Relative imaginary output: "
-            f"{imaginary_fraction:.6e}"
-        )
+        print(f"Maximum relative pole error: {np.max(pole_errors):.6e}")
+        print(f"Fit-window L2 error: {fit_error:.6e}")
+        print(f"Extrapolation L2 error: {extrapolation_error:.6e}")
+        print(f"Relative imaginary output: {imaginary_fraction:.6e}")
 
     figure, axes = plt.subplots(
         3,
@@ -339,18 +291,13 @@ def main():
     )
 
     for benchmark in results:
-        observation_time_ns = (
-            benchmark["observation_time"] * 1.0e9
-        )
+        observation_time_ns = benchmark["observation_time"] * 1.0e9
 
         axes[1].plot(
             time_ns,
             benchmark["reconstructed_output"],
             linewidth=1.2,
-            label=(
-                "TD-VF, "
-                f"T = {observation_time_ns:g} ns"
-            ),
+            label=(f"TD-VF, T = {observation_time_ns:g} ns"),
         )
 
         axes[1].axvline(
@@ -360,33 +307,19 @@ def main():
             linewidth=0.8,
         )
 
-    axes[1].set_title(
-        "TD-VF reconstruction and extrapolation"
-    )
+    axes[1].set_title("TD-VF reconstruction and extrapolation")
     axes[1].set_ylabel("y(t)")
     axes[1].grid(True)
     axes[1].legend()
 
     observation_ratios = np.array(
-        [
-            benchmark["observation_time"]
-            / decay_time
-            for benchmark in results
-        ]
+        [benchmark["observation_time"] / decay_time for benchmark in results]
     )
 
-    pole_errors = np.array(
-        [
-            benchmark["pole_error"]
-            for benchmark in results
-        ]
-    )
+    pole_errors = np.array([benchmark["pole_error"] for benchmark in results])
 
     extrapolation_errors = np.array(
-        [
-            benchmark["extrapolation_error"]
-            for benchmark in results
-        ]
+        [benchmark["extrapolation_error"] for benchmark in results]
     )
 
     axes[2].semilogy(
@@ -403,9 +336,7 @@ def main():
         label="Extrapolation error",
     )
 
-    axes[2].set_title(
-        "Accuracy versus observation-window length"
-    )
+    axes[2].set_title("Accuracy versus observation-window length")
     axes[2].set_xlabel(r"Observation time $T/\tau$")
     axes[2].set_ylabel("Relative error")
     axes[2].grid(True, which="both")

@@ -28,10 +28,7 @@ def gaussian_pulse(
 ):
     """Gaussian excitation pulse."""
 
-    return np.exp(
-        -0.5
-        * ((times - center) / sigma) ** 2
-    )
+    return np.exp(-0.5 * ((times - center) / sigma) ** 2)
 
 
 def generate_reference_response(
@@ -77,18 +74,13 @@ def evaluate_model(
 
     time_step = times[1] - times[0]
 
-    output_signal = (
-        direct_term * input_signal.astype(complex)
-    )
+    output_signal = direct_term * input_signal.astype(complex)
 
     for pole, residue in zip(poles, residues):
-        output_signal += (
-            residue
-            * recursive_exponential_convolution(
-                input_signal,
-                pole,
-                time_step,
-            )
+        output_signal += residue * recursive_exponential_convolution(
+            input_signal,
+            pole,
+            time_step,
         )
 
     return output_signal
@@ -97,19 +89,12 @@ def evaluate_model(
 def match_poles(reference_poles, fitted_poles):
     """Associate fitted poles with their closest reference poles."""
 
-    distance_matrix = np.abs(
-        fitted_poles[:, None]
-        - reference_poles[None, :]
-    )
+    distance_matrix = np.abs(fitted_poles[:, None] - reference_poles[None, :])
 
-    fitted_indices, reference_indices = (
-        linear_sum_assignment(distance_matrix)
-    )
+    fitted_indices, reference_indices = linear_sum_assignment(distance_matrix)
 
     ordered_poles = np.empty_like(reference_poles)
-    ordered_poles[reference_indices] = fitted_poles[
-        fitted_indices
-    ]
+    ordered_poles[reference_indices] = fitted_poles[fitted_indices]
 
     return ordered_poles
 
@@ -117,18 +102,13 @@ def match_poles(reference_poles, fitted_poles):
 def normalized_l2_error(reference, approximation):
     """Normalized L2 error."""
 
-    return (
-        np.linalg.norm(approximation - reference)
-        / np.linalg.norm(reference)
-    )
+    return np.linalg.norm(approximation - reference) / np.linalg.norm(reference)
 
 
 def pole_description(pole):
     """Classify a pole for the printed output."""
 
-    imaginary_tolerance = (
-        1.0e-10 * max(abs(pole), 1.0)
-    )
+    imaginary_tolerance = 1.0e-10 * max(abs(pole), 1.0)
 
     if abs(pole.imag) <= imaginary_tolerance:
         return "real"
@@ -152,16 +132,10 @@ def main():
     real_pole = -4.0e8
 
     # Strongly damped broadband resonance
-    broadband_pole = (
-        -6.0e8
-        + 1j * 2.0 * np.pi * 0.70e9
-    )
+    broadband_pole = -6.0e8 + 1j * 2.0 * np.pi * 0.70e9
 
     # Weak, slowly decaying resonance
-    narrowband_pole = (
-        -5.0e7
-        + 1j * 2.0 * np.pi * 1.15e9
-    )
+    narrowband_pole = -5.0e7 + 1j * 2.0 * np.pi * 1.15e9
 
     true_poles = np.array(
         [
@@ -196,15 +170,9 @@ def main():
     fit_mask = times <= observation_time
 
     # Deliberately imperfect initial poles.
-    initial_broadband_pole = (
-        -2.5e8
-        + 1j * 2.0 * np.pi * 0.55e9
-    )
+    initial_broadband_pole = -2.5e8 + 1j * 2.0 * np.pi * 0.55e9
 
-    initial_narrowband_pole = (
-        -2.0e8
-        + 1j * 2.0 * np.pi * 1.35e9
-    )
+    initial_narrowband_pole = -2.0e8 + 1j * 2.0 * np.pi * 1.35e9
 
     initial_poles = np.array(
         [
@@ -231,12 +199,9 @@ def main():
         result.poles,
     )
 
-    pole_errors = (
-        np.abs(fitted_poles - true_poles)
-        / np.maximum(
-            np.abs(true_poles),
-            np.finfo(float).eps,
-        )
+    pole_errors = np.abs(fitted_poles - true_poles) / np.maximum(
+        np.abs(true_poles),
+        np.finfo(float).eps,
     )
 
     reconstructed_output = evaluate_model(
@@ -261,33 +226,21 @@ def main():
         reconstructed_real[extrapolation_mask],
     )
 
-    imaginary_output_fraction = (
-        np.linalg.norm(reconstructed_output.imag)
-        / np.linalg.norm(reference_output)
-    )
+    imaginary_output_fraction = np.linalg.norm(
+        reconstructed_output.imag
+    ) / np.linalg.norm(reference_output)
 
     print()
     print("TD-VF benchmark with mixed pole types")
     print("=" * 92)
-    print(
-        f"Observation time: {observation_time * 1.0e9:.2f} ns"
-    )
-    print(
-        "Slowest decay time: "
-        f"{1.0 / 5.0e7 * 1.0e9:.2f} ns"
-    )
-    print(
-        "Observation time / slowest decay time: "
-        f"{observation_time * 5.0e7:.3f}"
-    )
+    print(f"Observation time: {observation_time * 1.0e9:.2f} ns")
+    print(f"Slowest decay time: {1.0 / 5.0e7 * 1.0e9:.2f} ns")
+    print(f"Observation time / slowest decay time: {observation_time * 5.0e7:.3f}")
     print(f"Relocation iterations: {result.iterations}")
     print()
 
     print(
-        f"{'Type':<12}"
-        f"{'Reference pole':>29}"
-        f"{'Fitted pole':>29}"
-        f"{'Relative error':>20}"
+        f"{'Type':<12}{'Reference pole':>29}{'Fitted pole':>29}{'Relative error':>20}"
     )
     print("-" * 92)
 
@@ -305,14 +258,8 @@ def main():
 
     print("-" * 92)
     print(f"Fit-window L2 error:       {fit_error:.6e}")
-    print(
-        "Extrapolation L2 error:    "
-        f"{extrapolation_error:.6e}"
-    )
-    print(
-        "Relative imaginary output: "
-        f"{imaginary_output_fraction:.6e}"
-    )
+    print(f"Extrapolation L2 error:    {extrapolation_error:.6e}")
+    print(f"Relative imaginary output: {imaginary_output_fraction:.6e}")
     print(f"Direct term:               {result.direct_term:.8e}")
 
     figure, axes = plt.subplots(
@@ -355,9 +302,7 @@ def main():
         label="End of observation",
     )
 
-    axes[0].set_title(
-        "Reconstruction beyond the observation window"
-    )
+    axes[0].set_title("Reconstruction beyond the observation window")
     axes[0].set_xlabel("Time [ns]")
     axes[0].set_ylabel("y(t)")
     axes[0].grid(True)
@@ -419,12 +364,8 @@ def main():
     )
 
     axes[2].set_title("Initial, true and fitted pole locations")
-    axes[2].set_xlabel(
-        r"Damping rate $-\operatorname{Re}(p)$ [$10^9$ s$^{-1}$]"
-    )
-    axes[2].set_ylabel(
-        r"Frequency $\operatorname{Im}(p)/(2\pi)$ [GHz]"
-    )
+    axes[2].set_xlabel(r"Damping rate $-\operatorname{Re}(p)$ [$10^9$ s$^{-1}$]")
+    axes[2].set_ylabel(r"Frequency $\operatorname{Im}(p)/(2\pi)$ [GHz]")
     axes[2].grid(True)
     axes[2].legend()
 

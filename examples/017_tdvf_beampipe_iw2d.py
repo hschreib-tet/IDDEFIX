@@ -25,7 +25,6 @@ from iddefix.timeDomainVectorFitting import (
     time_domain_vector_fit,
 )
 
-
 # ---------------------------------------------------------------------
 # Configuration
 # ---------------------------------------------------------------------
@@ -50,10 +49,7 @@ RELOCATION_TOLERANCE = 1.0e-8
 def find_data_file():
     """Find the IW2D wake file in examples/data."""
 
-    data_directory = (
-        Path(__file__).resolve().parent
-        / "data"
-    )
+    data_directory = Path(__file__).resolve().parent / "data"
 
     possible_names = [
         "beampipe_wake_iw2d.txt",
@@ -66,15 +62,10 @@ def find_data_file():
         if candidate.exists():
             return candidate
 
-    expected_files = "\n".join(
-        str(data_directory / name)
-        for name in possible_names
-    )
+    expected_files = "\n".join(str(data_directory / name) for name in possible_names)
 
     raise FileNotFoundError(
-        "Could not find the IW2D wake file. "
-        "Expected one of:\n"
-        + expected_files
+        "Could not find the IW2D wake file. Expected one of:\n" + expected_files
     )
 
 
@@ -97,9 +88,7 @@ def create_initial_poles(
             number_of_real_poles,
         )
 
-        poles.extend(
-            -real_decay_rates.astype(complex)
-        )
+        poles.extend(-real_decay_rates.astype(complex))
 
     if number_of_complex_pairs > 0:
         frequencies = np.geomspace(
@@ -111,18 +100,13 @@ def create_initial_poles(
         # Start with broadband complex poles.
         #
         # alpha = 2 pi f / (2 Q), with approximately Q = 1.
-        complex_decay_rates = (
-            np.pi * frequencies
-        )
+        complex_decay_rates = np.pi * frequencies
 
         for frequency, decay_rate in zip(
             frequencies,
             complex_decay_rates,
         ):
-            pole = (
-                -decay_rate
-                + 1j * 2.0 * np.pi * frequency
-            )
+            pole = -decay_rate + 1j * 2.0 * np.pi * frequency
 
             poles.extend(
                 [
@@ -152,31 +136,24 @@ def evaluate_time_domain_model(
 
     time_step = times[1] - times[0]
 
-    output_signal = (
-        direct_term
-        * input_signal.astype(complex)
-        + proportional_term
-        * sampled_time_derivative(
-            input_signal,
-            time_step,
-        )
+    output_signal = direct_term * input_signal.astype(
+        complex
+    ) + proportional_term * sampled_time_derivative(
+        input_signal,
+        time_step,
     )
 
     for pole, residue in zip(
         poles,
         residues,
     ):
-        filtered_input = (
-            recursive_exponential_convolution(
-                input_signal,
-                pole,
-                time_step,
-            )
+        filtered_input = recursive_exponential_convolution(
+            input_signal,
+            pole,
+            time_step,
         )
 
-        output_signal += (
-            residue * filtered_input
-        )
+        output_signal += residue * filtered_input
 
     return output_signal
 
@@ -192,12 +169,7 @@ def normalized_l2_error(
     if reference_norm == 0.0:
         return np.nan
 
-    return (
-        np.linalg.norm(
-            approximation - reference
-        )
-        / reference_norm
-    )
+    return np.linalg.norm(approximation - reference) / reference_norm
 
 
 def print_poles(poles):
@@ -214,13 +186,7 @@ def print_poles(poles):
     print()
     print("Fitted poles")
     print("-" * 96)
-    print(
-        f"{'Index':>5}"
-        f"{'Re(p) [1/s]':>22}"
-        f"{'f [Hz]':>22}"
-        f"{'tau [s]':>22}"
-        f"{'Q-like':>20}"
-    )
+    print(f"{'Index':>5}{'Re(p) [1/s]':>22}{'f [Hz]':>22}{'tau [s]':>22}{'Q-like':>20}")
     print("-" * 96)
 
     for index, pole in enumerate(sorted_poles):
@@ -229,15 +195,10 @@ def print_poles(poles):
         else:
             decay_time = np.inf
 
-        frequency = (
-            pole.imag / (2.0 * np.pi)
-        )
+        frequency = pole.imag / (2.0 * np.pi)
 
         if pole.real != 0.0:
-            quality_factor = (
-                abs(pole)
-                / (2.0 * abs(pole.real))
-            )
+            quality_factor = abs(pole) / (2.0 * abs(pole.real))
         else:
             quality_factor = np.inf
 
@@ -265,9 +226,7 @@ def main():
     )
 
     if data.ndim != 2 or data.shape[1] < 2:
-        raise ValueError(
-            "The IW2D file must contain at least time and Wlong."
-        )
+        raise ValueError("The IW2D file must contain at least time and Wlong.")
 
     raw_times = data[:, 0]
     raw_longitudinal_wake = data[:, 1]
@@ -278,18 +237,11 @@ def main():
 
     raw_time_steps = np.diff(raw_times)
 
-    time_step = (
-        raw_times[-1] - raw_times[0]
-    ) / (raw_times.size - 1)
+    time_step = (raw_times[-1] - raw_times[0]) / (raw_times.size - 1)
 
-    maximum_relative_time_step_deviation = (
-        np.max(
-            np.abs(
-                raw_time_steps - time_step
-            )
-        )
-        / abs(time_step)
-    )
+    maximum_relative_time_step_deviation = np.max(
+        np.abs(raw_time_steps - time_step)
+    ) / abs(time_step)
 
     cst_times = (
         raw_times[0]
@@ -308,13 +260,9 @@ def main():
     wake_scale = np.max(np.abs(wake))
 
     if wake_scale == 0.0:
-        raise ValueError(
-            "The longitudinal wake is zero."
-        )
+        raise ValueError("The longitudinal wake is zero.")
 
-    normalized_wake = (
-        wake / wake_scale
-    )
+    normalized_wake = wake / wake_scale
 
     # -----------------------------------------------------------------
     # Represent the data as an impulse response
@@ -325,22 +273,16 @@ def main():
         dtype=float,
     )
 
-    impulse_index = np.argmin(
-        np.abs(cst_times)
-    )
+    impulse_index = np.argmin(np.abs(cst_times))
 
     # The recursive convolution starts at index 1.
     if impulse_index == 0:
         impulse_index = 1
 
     # Unit-area discrete impulse.
-    input_signal[impulse_index] = (
-        1.0 / time_step
-    )
+    input_signal[impulse_index] = 1.0 / time_step
 
-    impulse_cst_time = (
-        cst_times[impulse_index]
-    )
+    impulse_cst_time = cst_times[impulse_index]
 
     # -----------------------------------------------------------------
     # Select fit and validation intervals
@@ -354,41 +296,27 @@ def main():
 
         fit_end_cst_time = cst_times[-1]
     else:
-        fit_end_cst_time = (
-            FIT_END_CST_TIME
-        )
+        fit_end_cst_time = FIT_END_CST_TIME
 
-        fit_mask = (
-            cst_times <= fit_end_cst_time
-        )
+        fit_mask = cst_times <= fit_end_cst_time
 
     # Ensure that the impulse is included in the fit.
     if not fit_mask[impulse_index]:
-        raise ValueError(
-            "The selected fit interval does not include the impulse."
-        )
+        raise ValueError("The selected fit interval does not include the impulse.")
 
     validation_mask = ~fit_mask
 
-    fit_end_plot_time = (
-        fit_end_cst_time - cst_times[0]
-    )
+    fit_end_plot_time = fit_end_cst_time - cst_times[0]
 
     # -----------------------------------------------------------------
     # Initial poles
     # -----------------------------------------------------------------
 
-    complete_time_length = (
-        cst_times[-1] - cst_times[0]
-    )
+    complete_time_length = cst_times[-1] - cst_times[0]
 
-    minimum_decay_rate = (
-        1.0 / complete_time_length
-    )
+    minimum_decay_rate = 1.0 / complete_time_length
 
-    maximum_decay_rate = (
-        0.25 / time_step
-    )
+    maximum_decay_rate = 0.25 / time_step
 
     initial_poles = create_initial_poles(
         number_of_real_poles=NUMBER_OF_REAL_POLES,
@@ -413,18 +341,12 @@ def main():
         f"{raw_times[0] * 1.0e12:.4f} ps to "
         f"{raw_times[-1] * 1.0e12:.4f} ps"
     )
-    print(
-        f"Reconstructed time step: "
-        f"{time_step * 1.0e15:.6f} fs"
-    )
+    print(f"Reconstructed time step: {time_step * 1.0e15:.6f} fs")
     print(
         "Maximum relative raw time-step deviation: "
         f"{maximum_relative_time_step_deviation:.6e}"
     )
-    print(
-        "Impulse CST time: "
-        f"{impulse_cst_time * 1.0e12:.6f} ps"
-    )
+    print(f"Impulse CST time: {impulse_cst_time * 1.0e12:.6f} ps")
     print(
         "Fit interval: "
         f"{cst_times[0] * 1.0e12:.4f} ps to "
@@ -440,18 +362,9 @@ def main():
     else:
         print("Validation interval: none")
 
-    print(
-        f"Real starting poles: "
-        f"{NUMBER_OF_REAL_POLES}"
-    )
-    print(
-        f"Complex starting pairs: "
-        f"{NUMBER_OF_COMPLEX_PAIRS}"
-    )
-    print(
-        f"Total number of poles: "
-        f"{initial_poles.size}"
-    )
+    print(f"Real starting poles: {NUMBER_OF_REAL_POLES}")
+    print(f"Complex starting pairs: {NUMBER_OF_COMPLEX_PAIRS}")
+    print(f"Total number of poles: {initial_poles.size}")
 
     # -----------------------------------------------------------------
     # Run TD-VF
@@ -473,33 +386,20 @@ def main():
     # Reconstruct the wake over the complete available interval
     # -----------------------------------------------------------------
 
-    reconstructed_normalized_wake = (
-        evaluate_time_domain_model(
-            times=times,
-            input_signal=input_signal,
-            poles=result.poles,
-            residues=result.residues,
-            direct_term=result.direct_term,
-            proportional_term=(
-                result.proportional_term
-            ),
-        )
+    reconstructed_normalized_wake = evaluate_time_domain_model(
+        times=times,
+        input_signal=input_signal,
+        poles=result.poles,
+        residues=result.residues,
+        direct_term=result.direct_term,
+        proportional_term=(result.proportional_term),
     )
 
-    reconstructed_wake = (
-        wake_scale
-        * reconstructed_normalized_wake
-    )
+    reconstructed_wake = wake_scale * reconstructed_normalized_wake
 
-    continuation_consistency_error = (
-        np.linalg.norm(
-            reconstructed_normalized_wake[fit_mask]
-            - result.fitted_output
-        )
-        / np.linalg.norm(
-            result.fitted_output
-        )
-    )
+    continuation_consistency_error = np.linalg.norm(
+        reconstructed_normalized_wake[fit_mask] - result.fitted_output
+    ) / np.linalg.norm(result.fitted_output)
 
     fit_error = normalized_l2_error(
         wake[fit_mask],
@@ -509,55 +409,24 @@ def main():
     if np.any(validation_mask):
         validation_error = normalized_l2_error(
             wake[validation_mask],
-            reconstructed_wake.real[
-                validation_mask
-            ],
+            reconstructed_wake.real[validation_mask],
         )
     else:
         validation_error = np.nan
 
-    imaginary_fraction = (
-        np.linalg.norm(
-            reconstructed_wake.imag
-        )
-        / np.linalg.norm(wake)
-    )
+    imaginary_fraction = np.linalg.norm(reconstructed_wake.imag) / np.linalg.norm(wake)
 
     print()
     print("TD-VF result")
     print("-" * 76)
-    print(
-        f"Relocation iterations: "
-        f"{result.iterations}"
-    )
-    print(
-        "Last relocation error: "
-        f"{result.relocation_errors[-1]:.6e}"
-    )
-    print(
-        "Continuation consistency error: "
-        f"{continuation_consistency_error:.6e}"
-    )
-    print(
-        f"Fit-window L2 error: "
-        f"{fit_error:.6e}"
-    )
-    print(
-        f"Validation L2 error: "
-        f"{validation_error:.6e}"
-    )
-    print(
-        "Relative imaginary output: "
-        f"{imaginary_fraction:.6e}"
-    )
-    print(
-        f"Direct term: "
-        f"{result.direct_term:.8e}"
-    )
-    print(
-        f"Proportional term: "
-        f"{result.proportional_term:.8e}"
-    )
+    print(f"Relocation iterations: {result.iterations}")
+    print(f"Last relocation error: {result.relocation_errors[-1]:.6e}")
+    print(f"Continuation consistency error: {continuation_consistency_error:.6e}")
+    print(f"Fit-window L2 error: {fit_error:.6e}")
+    print(f"Validation L2 error: {validation_error:.6e}")
+    print(f"Relative imaginary output: {imaginary_fraction:.6e}")
+    print(f"Direct term: {result.direct_term:.8e}")
+    print(f"Proportional term: {result.proportional_term:.8e}")
 
     print_poles(result.poles)
 
@@ -565,20 +434,11 @@ def main():
     # Time-domain plots
     # -----------------------------------------------------------------
 
-    time_ps = (
-        times * 1.0e12
-    )
+    time_ps = times * 1.0e12
 
-    fit_end_plot_time_ps = (
-        fit_end_plot_time * 1.0e12
-    )
+    fit_end_plot_time_ps = fit_end_plot_time * 1.0e12
 
-    pointwise_error = (
-        np.abs(
-            reconstructed_wake.real - wake
-        )
-        / wake_scale
-    )
+    pointwise_error = np.abs(reconstructed_wake.real - wake) / wake_scale
 
     figure, axes = plt.subplots(
         3,
@@ -620,16 +480,9 @@ def main():
         label="End of fit data",
     )
 
-    axes[0].set_title(
-        "IW2D longitudinal wake: "
-        "TD-VF reconstruction and extrapolation"
-    )
-    axes[0].set_xlabel(
-        "Time relative to start [ps]"
-    )
-    axes[0].set_ylabel(
-        r"$W_\parallel$ [V/C]"
-    )
+    axes[0].set_title("IW2D longitudinal wake: TD-VF reconstruction and extrapolation")
+    axes[0].set_xlabel("Time relative to start [ps]")
+    axes[0].set_ylabel(r"$W_\parallel$ [V/C]")
     axes[0].grid(True)
     axes[0].legend()
 
@@ -650,15 +503,9 @@ def main():
         label="TD-VF fit",
     )
 
-    axes[1].set_title(
-        "Wake inside the fit interval"
-    )
-    axes[1].set_xlabel(
-        "Time relative to start [ps]"
-    )
-    axes[1].set_ylabel(
-        r"$W_\parallel$ [V/C]"
-    )
+    axes[1].set_title("Wake inside the fit interval")
+    axes[1].set_xlabel("Time relative to start [ps]")
+    axes[1].set_ylabel(r"$W_\parallel$ [V/C]")
     axes[1].grid(True)
     axes[1].legend()
 
@@ -678,12 +525,8 @@ def main():
         linewidth=1.5,
     )
 
-    axes[2].set_title(
-        "Absolute error normalized by maximum wake"
-    )
-    axes[2].set_xlabel(
-        "Time relative to start [ps]"
-    )
+    axes[2].set_title("Absolute error normalized by maximum wake")
+    axes[2].set_xlabel("Time relative to start [ps]")
     axes[2].set_ylabel(
         r"$|W_\mathrm{fit}-W_\mathrm{IW2D}|/"
         r"\max|W_\mathrm{IW2D}|$"
@@ -696,32 +539,23 @@ def main():
     # Finite-window impedance comparison
     # -----------------------------------------------------------------
 
-    cst_frequencies, iw2d_impedance = (
-        iddefix.compute_fft(
-            cst_times,
-            wake,
-        )
+    cst_frequencies, iw2d_impedance = iddefix.compute_fft(
+        cst_times,
+        wake,
     )
 
-    tdvf_frequencies, tdvf_finite_impedance = (
-        iddefix.compute_fft(
-            cst_times,
-            reconstructed_wake.real,
-        )
+    tdvf_frequencies, tdvf_finite_impedance = iddefix.compute_fft(
+        cst_times,
+        reconstructed_wake.real,
     )
 
     if not np.allclose(
         cst_frequencies,
         tdvf_frequencies,
     ):
-        raise RuntimeError(
-            "The IW2D and TD-VF FFT frequency axes differ."
-        )
+        raise RuntimeError("The IW2D and TD-VF FFT frequency axes differ.")
 
-    frequency_mask = (
-        cst_frequencies
-        <= MAXIMUM_PLOT_FREQUENCY
-    )
+    frequency_mask = cst_frequencies <= MAXIMUM_PLOT_FREQUENCY
 
     # -----------------------------------------------------------------
     # Analytical fully-decayed TD-VF impedance
@@ -731,34 +565,24 @@ def main():
     # longitudinal impedance, up to the normalization by wake_scale.
     # -----------------------------------------------------------------
 
-    tdvf_fully_decayed_impedance = (
-        wake_scale
-        * evaluate_frequency_response(
-            frequencies=cst_frequencies,
-            poles=result.poles,
-            residues=result.residues,
-            direct_term=result.direct_term,
-            fourier_sign=-1,
-            proportional_term=(
-                result.proportional_term
-            ),
-        )
+    tdvf_fully_decayed_impedance = wake_scale * evaluate_frequency_response(
+        frequencies=cst_frequencies,
+        poles=result.poles,
+        residues=result.residues,
+        direct_term=result.direct_term,
+        fourier_sign=-1,
+        proportional_term=(result.proportional_term),
     )
 
-    impedance_figure, impedance_axes = (
-        plt.subplots(
-            3,
-            1,
-            figsize=(12, 11),
-            sharex=True,
-            constrained_layout=True,
-        )
+    impedance_figure, impedance_axes = plt.subplots(
+        3,
+        1,
+        figsize=(12, 11),
+        sharex=True,
+        constrained_layout=True,
     )
 
-    frequency_ghz = (
-        cst_frequencies[frequency_mask]
-        / 1.0e9
-    )
+    frequency_ghz = cst_frequencies[frequency_mask] / 1.0e9
 
     impedance_axes[0].plot(
         frequency_ghz,
@@ -770,9 +594,7 @@ def main():
 
     impedance_axes[0].plot(
         frequency_ghz,
-        tdvf_finite_impedance.real[
-            frequency_mask
-        ],
+        tdvf_finite_impedance.real[frequency_mask],
         color="tab:orange",
         linestyle="--",
         linewidth=1.1,
@@ -781,9 +603,7 @@ def main():
 
     impedance_axes[0].plot(
         frequency_ghz,
-        tdvf_fully_decayed_impedance.real[
-            frequency_mask
-        ],
+        tdvf_fully_decayed_impedance.real[frequency_mask],
         color="tab:blue",
         linestyle=":",
         linewidth=1.3,
@@ -800,9 +620,7 @@ def main():
 
     impedance_axes[1].plot(
         frequency_ghz,
-        tdvf_finite_impedance.imag[
-            frequency_mask
-        ],
+        tdvf_finite_impedance.imag[frequency_mask],
         color="tab:orange",
         linestyle="--",
         linewidth=1.1,
@@ -811,9 +629,7 @@ def main():
 
     impedance_axes[1].plot(
         frequency_ghz,
-        tdvf_fully_decayed_impedance.imag[
-            frequency_mask
-        ],
+        tdvf_fully_decayed_impedance.imag[frequency_mask],
         color="tab:blue",
         linestyle=":",
         linewidth=1.3,
@@ -823,9 +639,7 @@ def main():
     impedance_axes[2].semilogy(
         frequency_ghz,
         np.maximum(
-            np.abs(
-                iw2d_impedance[frequency_mask]
-            ),
+            np.abs(iw2d_impedance[frequency_mask]),
             np.finfo(float).eps,
         ),
         color="black",
@@ -836,11 +650,7 @@ def main():
     impedance_axes[2].semilogy(
         frequency_ghz,
         np.maximum(
-            np.abs(
-                tdvf_finite_impedance[
-                    frequency_mask
-                ]
-            ),
+            np.abs(tdvf_finite_impedance[frequency_mask]),
             np.finfo(float).eps,
         ),
         color="tab:orange",
@@ -852,11 +662,7 @@ def main():
     impedance_axes[2].semilogy(
         frequency_ghz,
         np.maximum(
-            np.abs(
-                tdvf_fully_decayed_impedance[
-                    frequency_mask
-                ]
-            ),
+            np.abs(tdvf_fully_decayed_impedance[frequency_mask]),
             np.finfo(float).eps,
         ),
         color="tab:blue",
@@ -865,21 +671,13 @@ def main():
         label="TD-VF fully-decayed impedance",
     )
 
-    impedance_axes[0].set_ylabel(
-        r"$\operatorname{Re}(Z_\parallel)$ [Ohm]"
-    )
+    impedance_axes[0].set_ylabel(r"$\operatorname{Re}(Z_\parallel)$ [Ohm]")
 
-    impedance_axes[1].set_ylabel(
-        r"$\operatorname{Im}(Z_\parallel)$ [Ohm]"
-    )
+    impedance_axes[1].set_ylabel(r"$\operatorname{Im}(Z_\parallel)$ [Ohm]")
 
-    impedance_axes[2].set_ylabel(
-        r"$|Z_\parallel|$ [Ohm]"
-    )
+    impedance_axes[2].set_ylabel(r"$|Z_\parallel|$ [Ohm]")
 
-    impedance_axes[2].set_xlabel(
-        "Frequency [GHz]"
-    )
+    impedance_axes[2].set_xlabel("Frequency [GHz]")
 
     for axis in impedance_axes:
         axis.grid(True, which="both")
@@ -898,8 +696,7 @@ def main():
 
     pole_axis.scatter(
         initial_poles.real / 1.0e9,
-        initial_poles.imag
-        / (2.0 * np.pi * 1.0e9),
+        initial_poles.imag / (2.0 * np.pi * 1.0e9),
         marker="o",
         s=45,
         facecolors="none",
@@ -909,8 +706,7 @@ def main():
 
     pole_axis.scatter(
         result.poles.real / 1.0e9,
-        result.poles.imag
-        / (2.0 * np.pi * 1.0e9),
+        result.poles.imag / (2.0 * np.pi * 1.0e9),
         marker="x",
         s=65,
         color="tab:orange",
@@ -923,9 +719,7 @@ def main():
         linewidth=1.0,
     )
 
-    pole_axis.set_title(
-        "Initial and fitted TD-VF poles"
-    )
+    pole_axis.set_title("Initial and fitted TD-VF poles")
 
     pole_axis.set_xlabel(
         r"$\operatorname{Re}(p)$ "

@@ -1,31 +1,24 @@
 import numpy as np
+import pytest
 from scipy.optimize import linear_sum_assignment
 
 from iddefix.timeDomainVectorFitting import (
+    _build_real_conjugate_basis,
+    _canonicalize_conjugate_poles,
+    _restore_conjugate_residues,
+    _sigma_zeros_from_real_coefficients,
     recursive_exponential_convolution,
     time_domain_vector_fit,
-    _build_real_conjugate_basis,
-    _restore_conjugate_residues,
-    _canonicalize_conjugate_poles,
-    _sigma_zeros_from_real_coefficients
 )
 
-import pytest
 
 def match_poles(reference_poles, fitted_poles):
-    distances = np.abs(
-        fitted_poles[:, None]
-        - reference_poles[None, :]
-    )
+    distances = np.abs(fitted_poles[:, None] - reference_poles[None, :])
 
-    fitted_indices, reference_indices = (
-        linear_sum_assignment(distances)
-    )
+    fitted_indices, reference_indices = linear_sum_assignment(distances)
 
     ordered_poles = np.empty_like(reference_poles)
-    ordered_poles[reference_indices] = fitted_poles[
-        fitted_indices
-    ]
+    ordered_poles[reference_indices] = fitted_poles[fitted_indices]
 
     return ordered_poles
 
@@ -39,14 +32,7 @@ def test_time_domain_vector_fitting_single_pair():
     time_step = times[1] - times[0]
 
     # Gaussian excitation
-    input_signal = np.exp(
-        -0.5
-        * (
-            (times - 0.5e-9)
-            / 0.12e-9
-        )
-        ** 2
-    )
+    input_signal = np.exp(-0.5 * ((times - 0.5e-9) / 0.12e-9) ** 2)
 
     # Known complex-conjugate pole pair.
     #
@@ -75,18 +61,13 @@ def test_time_domain_vector_fitting_single_pair():
         true_poles,
         true_residues,
     ):
-        output_signal += (
-            residue
-            * recursive_exponential_convolution(
-                input_signal,
-                pole,
-                time_step,
-            )
+        output_signal += residue * recursive_exponential_convolution(
+            input_signal,
+            pole,
+            time_step,
         )
 
-    output_signal = np.real_if_close(
-        output_signal
-    ).real
+    output_signal = np.real_if_close(output_signal).real
 
     # Deliberately inaccurate initial poles
     initial_poles = np.array(
@@ -110,16 +91,11 @@ def test_time_domain_vector_fitting_single_pair():
         result.poles,
     )
 
-    pole_error = np.abs(
-        fitted_poles - true_poles
-    ) / np.abs(true_poles)
+    pole_error = np.abs(fitted_poles - true_poles) / np.abs(true_poles)
 
-    output_error = (
-        np.linalg.norm(
-            result.fitted_output - output_signal
-        )
-        / np.linalg.norm(output_signal)
-    )
+    output_error = np.linalg.norm(
+        result.fitted_output - output_signal
+    ) / np.linalg.norm(output_signal)
 
     assert np.max(pole_error) < 1.0e-5
     assert output_error < 1.0e-8
@@ -136,11 +112,9 @@ def test_canonicalize_conjugate_poles():
         dtype=complex,
     )
 
-    canonical_poles = (
-        _canonicalize_conjugate_poles(
-            poles,
-            relative_tolerance=1.0e-2,
-        )
+    canonical_poles = _canonicalize_conjugate_poles(
+        poles,
+        relative_tolerance=1.0e-2,
     )
 
     assert canonical_poles.size == 3
@@ -170,9 +144,8 @@ def test_unpaired_complex_pole_is_rejected():
         ValueError,
         match="conjugate pairs",
     ):
-        _canonicalize_conjugate_poles(
-            poles
-        )
+        _canonicalize_conjugate_poles(poles)
+
 
 def test_real_conjugate_basis_matches_complex_sum():
     times = np.linspace(
@@ -181,22 +154,11 @@ def test_real_conjugate_basis_matches_complex_sum():
         1001,
     )
 
-    time_step = (
-        times[1] - times[0]
-    )
+    time_step = times[1] - times[0]
 
-    signal = np.exp(
-        -0.5
-        * (
-            (times - 1.0e-9)
-            / 0.2e-9
-        ) ** 2
-    )
+    signal = np.exp(-0.5 * ((times - 1.0e-9) / 0.2e-9) ** 2)
 
-    positive_pole = (
-        -2.0e8
-        + 1j * 2.0e9
-    )
+    positive_pole = -2.0e8 + 1j * 2.0e9
 
     poles = np.array(
         [
@@ -218,10 +180,7 @@ def test_real_conjugate_basis_matches_complex_sum():
         ]
     )
 
-    residue = (
-        3.0e8
-        - 1j * 4.0e8
-    )
+    residue = 3.0e8 - 1j * 4.0e8
 
     residues = np.array(
         [
@@ -232,15 +191,11 @@ def test_real_conjugate_basis_matches_complex_sum():
         dtype=complex,
     )
 
-    complex_output = (
-        filtered_signals @ residues
-    )
+    complex_output = filtered_signals @ residues
 
-    real_basis = (
-        _build_real_conjugate_basis(
-            filtered_signals,
-            poles,
-        )
+    real_basis = _build_real_conjugate_basis(
+        filtered_signals,
+        poles,
     )
 
     real_coefficients = np.array(
@@ -251,9 +206,7 @@ def test_real_conjugate_basis_matches_complex_sum():
         ]
     )
 
-    real_output = (
-        real_basis @ real_coefficients
-    )
+    real_output = real_basis @ real_coefficients
 
     np.testing.assert_allclose(
         real_output,
@@ -268,11 +221,9 @@ def test_real_conjugate_basis_matches_complex_sum():
         atol=1.0e-8,
     )
 
+
 def test_restore_conjugate_residues():
-    positive_pole = (
-        -2.0e8
-        + 1j * 3.0e9
-    )
+    positive_pole = -2.0e8 + 1j * 3.0e9
 
     poles = np.array(
         [
@@ -291,22 +242,17 @@ def test_restore_conjugate_residues():
         ]
     )
 
-    residues = (
-        _restore_conjugate_residues(
-            coefficients,
-            poles,
-        )
+    residues = _restore_conjugate_residues(
+        coefficients,
+        poles,
     )
 
     assert residues[0].imag == 0.0
 
-    assert residues[1] == (
-        2.0 - 3.0j
-    )
+    assert residues[1] == (2.0 - 3.0j)
 
-    assert residues[2] == np.conj(
-        residues[1]
-    )
+    assert residues[2] == np.conj(residues[1])
+
 
 def test_tdvf_result_has_exact_conjugate_structure():
     times = np.linspace(
@@ -315,46 +261,25 @@ def test_tdvf_result_has_exact_conjugate_structure():
         2001,
     )
 
-    time_step = (
-        times[1] - times[0]
-    )
+    time_step = times[1] - times[0]
 
-    input_signal = np.exp(
-        -0.5
-        * (
-            (times - 0.5e-9)
-            / 0.12e-9
-        ) ** 2
-    )
+    input_signal = np.exp(-0.5 * ((times - 0.5e-9) / 0.12e-9) ** 2)
 
-    true_positive_pole = (
-        -8.0e7
-        + 1j
-        * 2.0
-        * np.pi
-        * 1.1e9
-    )
+    true_positive_pole = -8.0e7 + 1j * 2.0 * np.pi * 1.1e9
 
     true_poles = np.array(
         [
             true_positive_pole,
-            np.conj(
-                true_positive_pole
-            ),
+            np.conj(true_positive_pole),
         ]
     )
 
-    true_positive_residue = (
-        5.0e10
-        + 2.0e10j
-    )
+    true_positive_residue = 5.0e10 + 2.0e10j
 
     true_residues = np.array(
         [
             true_positive_residue,
-            np.conj(
-                true_positive_residue
-            ),
+            np.conj(true_positive_residue),
         ]
     )
 
@@ -368,29 +293,18 @@ def test_tdvf_result_has_exact_conjugate_structure():
         true_residues,
         strict=True,
     ):
-        output_signal += (
-            residue
-            * recursive_exponential_convolution(
-                input_signal,
-                pole,
-                time_step,
-            )
+        output_signal += residue * recursive_exponential_convolution(
+            input_signal,
+            pole,
+            time_step,
         )
 
-    initial_positive_pole = (
-        -3.0e8
-        + 1j
-        * 2.0
-        * np.pi
-        * 0.9e9
-    )
+    initial_positive_pole = -3.0e8 + 1j * 2.0 * np.pi * 0.9e9
 
     initial_poles = np.array(
         [
             initial_positive_pole,
-            np.conj(
-                initial_positive_pole
-            ),
+            np.conj(initial_positive_pole),
         ]
     )
 
@@ -403,13 +317,9 @@ def test_tdvf_result_has_exact_conjugate_structure():
         tolerance=1.0e-10,
     )
 
-    assert result.poles[1] == np.conj(
-        result.poles[0]
-    )
+    assert result.poles[1] == np.conj(result.poles[0])
 
-    assert result.residues[1] == np.conj(
-        result.residues[0]
-    )
+    assert result.residues[1] == np.conj(result.residues[0])
 
     assert result.direct_term.imag == 0.0
 
@@ -421,11 +331,9 @@ def test_tdvf_result_has_exact_conjugate_structure():
         atol=1.0e-12,
     )
 
+
 def test_real_sigma_zero_matrix_matches_complex_form():
-    positive_pole = (
-        -2.0e8
-        + 1j * 3.0e9
-    )
+    positive_pole = -2.0e8 + 1j * 3.0e9
 
     poles = np.array(
         [
@@ -444,46 +352,30 @@ def test_real_sigma_zero_matrix_matches_complex_form():
         ]
     )
 
-    sigma_residues = (
-        _restore_conjugate_residues(
-            real_sigma_coefficients,
-            poles,
-        )
+    sigma_residues = _restore_conjugate_residues(
+        real_sigma_coefficients,
+        poles,
     )
 
-    complex_zero_matrix = (
-        np.diag(poles)
-        - np.outer(
-            np.ones(
-                poles.size,
-                dtype=complex,
-            ),
-            sigma_residues,
-        )
+    complex_zero_matrix = np.diag(poles) - np.outer(
+        np.ones(
+            poles.size,
+            dtype=complex,
+        ),
+        sigma_residues,
     )
 
-    complex_zeros = np.linalg.eigvals(
-        complex_zero_matrix
-    )
+    complex_zeros = np.linalg.eigvals(complex_zero_matrix)
 
-    real_form_zeros = (
-        _sigma_zeros_from_real_coefficients(
-            poles,
-            real_sigma_coefficients,
-        )
+    real_form_zeros = _sigma_zeros_from_real_coefficients(
+        poles,
+        real_sigma_coefficients,
     )
 
     # Match the two unordered eigenvalue sets.
-    distances = np.abs(
-        complex_zeros[:, None]
-        - real_form_zeros[None, :]
-    )
+    distances = np.abs(complex_zeros[:, None] - real_form_zeros[None, :])
 
-    complex_indices, real_indices = (
-        linear_sum_assignment(
-            distances
-        )
-    )
+    complex_indices, real_indices = linear_sum_assignment(distances)
 
     np.testing.assert_allclose(
         complex_zeros[complex_indices],

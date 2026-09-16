@@ -33,14 +33,11 @@ def sampled_time_derivative(
 
     if signal.size < 3:
         raise ValueError(
-            "At least three samples are required to calculate "
-            "the time derivative."
+            "At least three samples are required to calculate the time derivative."
         )
 
     if not np.isfinite(time_step) or time_step <= 0.0:
-        raise ValueError(
-            "time_step must be a positive finite number."
-        )
+        raise ValueError("time_step must be a positive finite number.")
 
     return np.gradient(
         signal,
@@ -86,8 +83,7 @@ def recursive_exponential_convolution(
 
     for index in range(1, signal.size):
         filtered_signal[index] = (
-            decay * filtered_signal[index - 1]
-            + input_factor * signal[index]
+            decay * filtered_signal[index - 1] + input_factor * signal[index]
         )
 
     return filtered_signal
@@ -123,13 +119,9 @@ def _match_poles(
 ) -> NDArray[np.complex128]:
     """Match relocated poles to the previous poles."""
 
-    distances = np.abs(
-        new_poles[:, None] - old_poles[None, :]
-    )
+    distances = np.abs(new_poles[:, None] - old_poles[None, :])
 
-    new_indices, old_indices = linear_sum_assignment(
-        distances
-    )
+    new_indices, old_indices = linear_sum_assignment(distances)
 
     ordered_poles = np.empty_like(old_poles)
     ordered_poles[old_indices] = new_poles[new_indices]
@@ -147,11 +139,11 @@ def _stabilize_poles(
     unstable = stabilized_poles.real > 0.0
 
     stabilized_poles[unstable] = (
-        -stabilized_poles[unstable].real
-        + 1j * stabilized_poles[unstable].imag
+        -stabilized_poles[unstable].real + 1j * stabilized_poles[unstable].imag
     )
 
     return stabilized_poles
+
 
 def _canonicalize_conjugate_poles(
     poles: ArrayLike,
@@ -199,76 +191,45 @@ def _canonicalize_conjugate_poles(
     )
 
     if poles.ndim != 1:
-        raise ValueError(
-            "poles must be one-dimensional."
-        )
+        raise ValueError("poles must be one-dimensional.")
 
     if not np.all(np.isfinite(poles)):
-        raise ValueError(
-            "poles must contain only finite values."
-        )
+        raise ValueError("poles must contain only finite values.")
 
     if relative_tolerance < 0.0:
-        raise ValueError(
-            "relative_tolerance must be non-negative."
-        )
+        raise ValueError("relative_tolerance must be non-negative.")
 
     if absolute_tolerance < 0.0:
-        raise ValueError(
-            "absolute_tolerance must be non-negative."
-        )
+        raise ValueError("absolute_tolerance must be non-negative.")
 
     pole_scales = np.maximum(
         np.abs(poles),
         1.0,
     )
 
-    real_mask = (
-        np.abs(poles.imag)
-        <= (
-            absolute_tolerance
-            + relative_tolerance
-            * pole_scales
-        )
+    real_mask = np.abs(poles.imag) <= (
+        absolute_tolerance + relative_tolerance * pole_scales
     )
 
-    real_poles = (
-        poles[real_mask].real
-        .astype(complex)
-    )
+    real_poles = poles[real_mask].real.astype(complex)
 
-    complex_poles = poles[
-        ~real_mask
-    ]
+    complex_poles = poles[~real_mask]
 
-    positive_poles = complex_poles[
-        complex_poles.imag > 0.0
-    ]
+    positive_poles = complex_poles[complex_poles.imag > 0.0]
 
-    negative_poles = complex_poles[
-        complex_poles.imag < 0.0
-    ]
+    negative_poles = complex_poles[complex_poles.imag < 0.0]
 
     if positive_poles.size != negative_poles.size:
-        raise ValueError(
-            "Complex poles must occur in conjugate pairs."
-        )
+        raise ValueError("Complex poles must occur in conjugate pairs.")
 
     canonical_pairs = []
 
     if positive_poles.size:
         conjugate_distances = np.abs(
-            positive_poles[:, None]
-            - np.conj(
-                negative_poles[None, :]
-            )
+            positive_poles[:, None] - np.conj(negative_poles[None, :])
         )
 
-        positive_indices, negative_indices = (
-            linear_sum_assignment(
-                conjugate_distances
-            )
-        )
+        positive_indices, negative_indices = linear_sum_assignment(conjugate_distances)
 
         for (
             positive_index,
@@ -278,18 +239,11 @@ def _canonicalize_conjugate_poles(
             negative_indices,
             strict=True,
         ):
-            positive_pole = positive_poles[
-                positive_index
-            ]
+            positive_pole = positive_poles[positive_index]
 
-            negative_pole = negative_poles[
-                negative_index
-            ]
+            negative_pole = negative_poles[negative_index]
 
-            distance = abs(
-                positive_pole
-                - np.conj(negative_pole)
-            )
+            distance = abs(positive_pole - np.conj(negative_pole))
 
             scale = max(
                 abs(positive_pole),
@@ -297,10 +251,7 @@ def _canonicalize_conjugate_poles(
                 1.0,
             )
 
-            tolerance = (
-                absolute_tolerance
-                + relative_tolerance * scale
-            )
+            tolerance = absolute_tolerance + relative_tolerance * scale
 
             if distance > tolerance:
                 raise ValueError(
@@ -310,29 +261,17 @@ def _canonicalize_conjugate_poles(
                     f"with {negative_pole}."
                 )
 
-            averaged_positive_pole = (
-                0.5
-                * (
-                    positive_pole
-                    + np.conj(negative_pole)
-                )
-            )
+            averaged_positive_pole = 0.5 * (positive_pole + np.conj(negative_pole))
 
             # Make the orientation of the pair unambiguous.
-            averaged_positive_pole = (
-                averaged_positive_pole.real
-                + 1j
-                * abs(
-                    averaged_positive_pole.imag
-                )
+            averaged_positive_pole = averaged_positive_pole.real + 1j * abs(
+                averaged_positive_pole.imag
             )
 
             canonical_pairs.extend(
                 [
                     averaged_positive_pole,
-                    np.conj(
-                        averaged_positive_pole
-                    ),
+                    np.conj(averaged_positive_pole),
                 ]
             )
 
@@ -358,9 +297,7 @@ def _canonicalize_conjugate_poles(
     )
 
     if canonical_pairs.size:
-        canonical_pairs = (
-            canonical_pairs.reshape(-1)
-        )
+        canonical_pairs = canonical_pairs.reshape(-1)
     else:
         canonical_pairs = np.empty(
             0,
@@ -373,6 +310,7 @@ def _canonicalize_conjugate_poles(
             canonical_pairs,
         ]
     )
+
 
 def _build_real_conjugate_basis(
     filtered_signals: NDArray[np.complex128],
@@ -405,14 +343,11 @@ def _build_real_conjugate_basis(
     )
 
     if filtered_signals.ndim != 2:
-        raise ValueError(
-            "filtered_signals must be two-dimensional."
-        )
+        raise ValueError("filtered_signals must be two-dimensional.")
 
     if filtered_signals.shape[1] != poles.size:
         raise ValueError(
-            "The number of filtered-signal columns must "
-            "equal the number of poles."
+            "The number of filtered-signal columns must equal the number of poles."
         )
 
     columns = []
@@ -435,24 +370,17 @@ def _build_real_conjugate_basis(
 
         if pole.imag < 0.0:
             raise ValueError(
-                "A complex pair must begin with its "
-                "positive-imaginary pole."
+                "A complex pair must begin with its positive-imaginary pole."
             )
 
         if pole_index + 1 >= poles.size:
-            raise ValueError(
-                "A complex pole is missing its "
-                "conjugate partner."
-            )
+            raise ValueError("A complex pole is missing its conjugate partner.")
 
-        conjugate_pole = poles[
-            pole_index + 1
-        ]
+        conjugate_pole = poles[pole_index + 1]
 
         if conjugate_pole != np.conj(pole):
             raise ValueError(
-                "Complex poles must be stored as adjacent "
-                "exact conjugate pairs."
+                "Complex poles must be stored as adjacent exact conjugate pairs."
             )
 
         positive_column = filtered_signals[
@@ -465,18 +393,9 @@ def _build_real_conjugate_basis(
             pole_index + 1,
         ]
 
-        real_residue_column = (
-            positive_column
-            + negative_column
-        ).real
+        real_residue_column = (positive_column + negative_column).real
 
-        imaginary_residue_column = (
-            1j
-            * (
-                positive_column
-                - negative_column
-            )
-        ).real
+        imaginary_residue_column = (1j * (positive_column - negative_column)).real
 
         columns.extend(
             [
@@ -487,9 +406,8 @@ def _build_real_conjugate_basis(
 
         pole_index += 2
 
-    return np.column_stack(
-        columns
-    )
+    return np.column_stack(columns)
+
 
 def _restore_conjugate_residues(
     real_coefficients: ArrayLike,
@@ -508,14 +426,10 @@ def _restore_conjugate_residues(
     )
 
     if real_coefficients.ndim != 1:
-        raise ValueError(
-            "real_coefficients must be one-dimensional."
-        )
+        raise ValueError("real_coefficients must be one-dimensional.")
 
     if real_coefficients.size != poles.size:
-        raise ValueError(
-            "There must be one real coefficient per pole."
-        )
+        raise ValueError("There must be one real coefficient per pole.")
 
     residues = np.empty(
         poles.size,
@@ -529,11 +443,7 @@ def _restore_conjugate_residues(
         pole = poles[pole_index]
 
         if pole.imag == 0.0:
-            residues[pole_index] = (
-                real_coefficients[
-                    coefficient_index
-                ]
-            )
+            residues[pole_index] = real_coefficients[coefficient_index]
 
             pole_index += 1
             coefficient_index += 1
@@ -542,33 +452,25 @@ def _restore_conjugate_residues(
         if (
             pole.imag < 0.0
             or pole_index + 1 >= poles.size
-            or poles[pole_index + 1]
-            != np.conj(pole)
+            or poles[pole_index + 1] != np.conj(pole)
         ):
             raise ValueError(
-                "Complex poles must be stored as adjacent "
-                "exact conjugate pairs."
+                "Complex poles must be stored as adjacent exact conjugate pairs."
             )
 
         residue = (
-            real_coefficients[
-                coefficient_index
-            ]
-            + 1j
-            * real_coefficients[
-                coefficient_index + 1
-            ]
+            real_coefficients[coefficient_index]
+            + 1j * real_coefficients[coefficient_index + 1]
         )
 
         residues[pole_index] = residue
-        residues[pole_index + 1] = (
-            np.conj(residue)
-        )
+        residues[pole_index + 1] = np.conj(residue)
 
         pole_index += 2
         coefficient_index += 2
 
     return residues
+
 
 def _sigma_zeros_from_real_coefficients(
     poles: NDArray[np.complex128],
@@ -613,36 +515,19 @@ def _sigma_zeros_from_real_coefficients(
     )
 
     if poles.ndim != 1:
-        raise ValueError(
-            "poles must be one-dimensional."
-        )
+        raise ValueError("poles must be one-dimensional.")
 
     if real_sigma_coefficients.ndim != 1:
-        raise ValueError(
-            "real_sigma_coefficients must be "
-            "one-dimensional."
-        )
+        raise ValueError("real_sigma_coefficients must be one-dimensional.")
 
     if real_sigma_coefficients.size != poles.size:
-        raise ValueError(
-            "There must be one real sigma coefficient "
-            "per pole."
-        )
+        raise ValueError("There must be one real sigma coefficient per pole.")
 
     if not np.all(np.isfinite(poles)):
-        raise ValueError(
-            "poles must contain only finite values."
-        )
+        raise ValueError("poles must contain only finite values.")
 
-    if not np.all(
-        np.isfinite(
-            real_sigma_coefficients
-        )
-    ):
-        raise ValueError(
-            "real_sigma_coefficients must contain "
-            "only finite values."
-        )
+    if not np.all(np.isfinite(real_sigma_coefficients)):
+        raise ValueError("real_sigma_coefficients must contain only finite values.")
 
     number_of_poles = poles.size
 
@@ -659,9 +544,7 @@ def _sigma_zeros_from_real_coefficients(
         dtype=float,
     )
 
-    output_vector = (
-        real_sigma_coefficients.copy()
-    )
+    output_vector = real_sigma_coefficients.copy()
 
     pole_index = 0
 
@@ -674,33 +557,24 @@ def _sigma_zeros_from_real_coefficients(
                 pole_index,
             ] = pole.real
 
-            input_vector[
-                pole_index
-            ] = 1.0
+            input_vector[pole_index] = 1.0
 
             pole_index += 1
             continue
 
         if pole.imag < 0.0:
             raise ValueError(
-                "A complex pair must begin with its "
-                "positive-imaginary pole."
+                "A complex pair must begin with its positive-imaginary pole."
             )
 
         if pole_index + 1 >= number_of_poles:
-            raise ValueError(
-                "A complex pole is missing its "
-                "conjugate partner."
-            )
+            raise ValueError("A complex pole is missing its conjugate partner.")
 
-        conjugate_pole = poles[
-            pole_index + 1
-        ]
+        conjugate_pole = poles[pole_index + 1]
 
         if conjugate_pole != np.conj(pole):
             raise ValueError(
-                "Complex poles must be stored as adjacent "
-                "exact conjugate pairs."
+                "Complex poles must be stored as adjacent exact conjugate pairs."
             )
 
         alpha = pole.real
@@ -725,13 +599,9 @@ def _sigma_zeros_from_real_coefficients(
 
         # Under the same similarity transformation, the original
         # complex input vector [1, 1]^T becomes [2, 0]^T.
-        input_vector[
-            pole_index
-        ] = 2.0
+        input_vector[pole_index] = 2.0
 
-        input_vector[
-            pole_index + 1
-        ] = 0.0
+        input_vector[pole_index + 1] = 0.0
 
         pole_index += 2
 
@@ -740,17 +610,13 @@ def _sigma_zeros_from_real_coefficients(
     #     A - b c^T.
     #
     # All quantities in this representation are real.
-    zero_matrix = (
-        real_pole_matrix
-        - np.outer(
-            input_vector,
-            output_vector,
-        )
+    zero_matrix = real_pole_matrix - np.outer(
+        input_vector,
+        output_vector,
     )
 
-    return np.linalg.eigvals(
-        zero_matrix
-    ).astype(complex)
+    return np.linalg.eigvals(zero_matrix).astype(complex)
+
 
 def time_domain_vector_fit(
     times: ArrayLike,
@@ -835,44 +701,27 @@ def time_domain_vector_fit(
     # -----------------------------------------------------------------
 
     if times.ndim != 1:
-        raise ValueError(
-            "times must be one-dimensional."
-        )
+        raise ValueError("times must be one-dimensional.")
 
     if input_signal.shape != times.shape:
-        raise ValueError(
-            "input_signal and times must have equal shapes."
-        )
+        raise ValueError("input_signal and times must have equal shapes.")
 
     if output_signal.shape != times.shape:
-        raise ValueError(
-            "output_signal and times must have equal shapes."
-        )
+        raise ValueError("output_signal and times must have equal shapes.")
 
-    minimum_samples = (
-        3 if fit_proportional_term else 2
-    )
+    minimum_samples = 3 if fit_proportional_term else 2
 
     if times.size < minimum_samples:
-        raise ValueError(
-            f"At least {minimum_samples} time samples "
-            "are required."
-        )
+        raise ValueError(f"At least {minimum_samples} time samples are required.")
 
     if not np.all(np.isfinite(times)):
-        raise ValueError(
-            "times must contain only finite values."
-        )
+        raise ValueError("times must contain only finite values.")
 
     if not np.all(np.isfinite(input_signal)):
-        raise ValueError(
-            "input_signal must contain only finite values."
-        )
+        raise ValueError("input_signal must contain only finite values.")
 
     if not np.all(np.isfinite(output_signal)):
-        raise ValueError(
-            "output_signal must contain only finite values."
-        )
+        raise ValueError("output_signal must contain only finite values.")
 
     if (
         not isinstance(
@@ -881,17 +730,10 @@ def time_domain_vector_fit(
         )
         or maximum_iterations < 1
     ):
-        raise ValueError(
-            "maximum_iterations must be a positive integer."
-        )
+        raise ValueError("maximum_iterations must be a positive integer.")
 
-    if (
-        not np.isfinite(tolerance)
-        or tolerance < 0.0
-    ):
-        raise ValueError(
-            "tolerance must be non-negative and finite."
-        )
+    if not np.isfinite(tolerance) or tolerance < 0.0:
+        raise ValueError("tolerance must be non-negative and finite.")
 
     # -----------------------------------------------------------------
     # Require real input and output signals
@@ -907,26 +749,18 @@ def time_domain_vector_fit(
         np.finfo(float).eps,
     )
 
-    relative_imaginary_input = (
-        np.max(np.abs(input_signal.imag))
-        / input_scale
-    )
+    relative_imaginary_input = np.max(np.abs(input_signal.imag)) / input_scale
 
-    relative_imaginary_output = (
-        np.max(np.abs(output_signal.imag))
-        / output_scale
-    )
+    relative_imaginary_output = np.max(np.abs(output_signal.imag)) / output_scale
 
     if relative_imaginary_input > 1.0e-10:
         raise ValueError(
-            "The real conjugate-pair formulation requires "
-            "a real input signal."
+            "The real conjugate-pair formulation requires a real input signal."
         )
 
     if relative_imaginary_output > 1.0e-10:
         raise ValueError(
-            "The real conjugate-pair formulation requires "
-            "a real output signal."
+            "The real conjugate-pair formulation requires a real output signal."
         )
 
     # From this point onward, the least-squares problems are
@@ -938,19 +772,12 @@ def time_domain_vector_fit(
     # Validate equidistant time sampling
     # -----------------------------------------------------------------
 
-    time_steps = np.diff(
-        times
-    )
+    time_steps = np.diff(times)
 
     time_step = time_steps[0]
 
-    if (
-        not np.isfinite(time_step)
-        or time_step <= 0.0
-    ):
-        raise ValueError(
-            "times must be strictly increasing."
-        )
+    if not np.isfinite(time_step) or time_step <= 0.0:
+        raise ValueError("times must be strictly increasing.")
 
     if not np.allclose(
         time_steps,
@@ -958,10 +785,7 @@ def time_domain_vector_fit(
         rtol=1.0e-10,
         atol=0.0,
     ):
-        raise ValueError(
-            "The first TD-VF version requires "
-            "equidistant time samples."
-        )
+        raise ValueError("The first TD-VF version requires equidistant time samples.")
 
     # -----------------------------------------------------------------
     # Validate and normalize weights
@@ -979,65 +803,41 @@ def time_domain_vector_fit(
         )
 
         if weights.shape != times.shape:
-            raise ValueError(
-                "weights and times must have equal shapes."
-            )
+            raise ValueError("weights and times must have equal shapes.")
 
         if np.any(~np.isfinite(weights)):
-            raise ValueError(
-                "weights must contain only finite values."
-            )
+            raise ValueError("weights must contain only finite values.")
 
         if np.any(weights < 0.0):
-            raise ValueError(
-                "weights must be non-negative."
-            )
+            raise ValueError("weights must be non-negative.")
 
         if not np.any(weights > 0.0):
-            raise ValueError(
-                "At least one weight must be positive."
-            )
+            raise ValueError("At least one weight must be positive.")
 
     # Normalize the weights without changing the minimizer.
-    weights = (
-        weights
-        / np.sqrt(
-            np.mean(weights**2)
-        )
-    )
+    weights = weights / np.sqrt(np.mean(weights**2))
 
     # -----------------------------------------------------------------
     # Validate and canonicalize starting poles
     # -----------------------------------------------------------------
 
-    poles = (
-        _canonicalize_conjugate_poles(
-            initial_poles
-        )
-    )
+    poles = _canonicalize_conjugate_poles(initial_poles)
 
     if poles.size == 0:
-        raise ValueError(
-            "initial_poles must be non-empty."
-        )
+        raise ValueError("initial_poles must be non-empty.")
 
     if np.any(poles.real >= 0.0):
-        raise ValueError(
-            "All initial poles must lie in the "
-            "left half-plane."
-        )
+        raise ValueError("All initial poles must lie in the left half-plane.")
 
     # -----------------------------------------------------------------
     # Derivative of the excitation for the proportional term
     # -----------------------------------------------------------------
 
     if fit_proportional_term:
-        input_derivative = (
-            sampled_time_derivative(
-                input_signal,
-                time_step,
-            ).real
-        )
+        input_derivative = sampled_time_derivative(
+            input_signal,
+            time_step,
+        ).real
     else:
         input_derivative = None
 
@@ -1094,18 +894,14 @@ def time_domain_vector_fit(
         # parts of the residue belonging to the pole with positive
         # imaginary part.
 
-        real_filtered_input_basis = (
-            _build_real_conjugate_basis(
-                filtered_inputs,
-                poles,
-            )
+        real_filtered_input_basis = _build_real_conjugate_basis(
+            filtered_inputs,
+            poles,
         )
 
-        real_filtered_output_basis = (
-            _build_real_conjugate_basis(
-                -filtered_outputs,
-                poles,
-            )
+        real_filtered_output_basis = _build_real_conjugate_basis(
+            -filtered_outputs,
+            poles,
         )
 
         # c_inf is an auxiliary numerator coefficient of
@@ -1116,9 +912,7 @@ def time_domain_vector_fit(
         ]
 
         if fit_proportional_term:
-            relocation_columns.append(
-                input_derivative
-            )
+            relocation_columns.append(input_derivative)
 
         relocation_columns.extend(
             [
@@ -1127,62 +921,36 @@ def time_domain_vector_fit(
             ]
         )
 
-        relocation_matrix = np.column_stack(
-            relocation_columns
-        )
+        relocation_matrix = np.column_stack(relocation_columns)
 
-        weighted_relocation_matrix = (
-            weights[:, None]
-            * relocation_matrix
-        )
+        weighted_relocation_matrix = weights[:, None] * relocation_matrix
 
-        weighted_output_signal = (
-            weights
-            * output_signal
-        )
+        weighted_output_signal = weights * output_signal
 
-        relocation_coefficients = (
-            _scaled_least_squares(
-                weighted_relocation_matrix,
-                weighted_output_signal,
-            )
+        relocation_coefficients = _scaled_least_squares(
+            weighted_relocation_matrix,
+            weighted_output_signal,
         )
 
         # The last N real coefficients describe the residues of
         # sigma(s). For a complex pair, two consecutive real
         # coefficients represent Re(k) and Im(k).
-        sigma_real_coefficients = (
-            relocation_coefficients[
-                -poles.size:
-            ]
-        )
+        sigma_real_coefficients = relocation_coefficients[-poles.size :]
 
         # Calculate the zeros of sigma(s) from the real block
         # representation described in Gustavsen Appendix B.
-        relocated_poles = (
-            _sigma_zeros_from_real_coefficients(
-                poles=poles,
-                real_sigma_coefficients=(
-                    sigma_real_coefficients
-                ),
-            )
+        relocated_poles = _sigma_zeros_from_real_coefficients(
+            poles=poles,
+            real_sigma_coefficients=(sigma_real_coefficients),
         )
 
         if enforce_stability:
-            relocated_poles = (
-                _stabilize_poles(
-                    relocated_poles
-                )
-            )
+            relocated_poles = _stabilize_poles(relocated_poles)
 
         # Numerical eigensolvers preserve conjugacy only up to
         # floating-point accuracy. Project the result back onto
         # an exact real/conjugate structure.
-        relocated_poles = (
-            _canonicalize_conjugate_poles(
-                relocated_poles
-            )
-        )
+        relocated_poles = _canonicalize_conjugate_poles(relocated_poles)
 
         # Associate new poles with the previous poles before
         # calculating the relative pole movement.
@@ -1195,27 +963,16 @@ def time_domain_vector_fit(
         #
         # real poles first, followed by adjacent conjugate pairs,
         # with the positive-imaginary pole first.
-        relocated_poles = (
-            _canonicalize_conjugate_poles(
-                relocated_poles
-            )
-        )
+        relocated_poles = _canonicalize_conjugate_poles(relocated_poles)
 
         denominator = max(
             np.linalg.norm(poles),
             np.finfo(float).eps,
         )
 
-        relocation_error = (
-            np.linalg.norm(
-                relocated_poles - poles
-            )
-            / denominator
-        )
+        relocation_error = np.linalg.norm(relocated_poles - poles) / denominator
 
-        relocation_errors.append(
-            float(relocation_error)
-        )
+        relocation_errors.append(float(relocation_error))
 
         poles = relocated_poles
 
@@ -1237,48 +994,30 @@ def time_domain_vector_fit(
         ]
     )
 
-    real_filtered_input_basis = (
-        _build_real_conjugate_basis(
-            filtered_inputs,
-            poles,
-        )
+    real_filtered_input_basis = _build_real_conjugate_basis(
+        filtered_inputs,
+        poles,
     )
 
     residue_columns = []
 
     if fit_direct_term:
-        residue_columns.append(
-            input_signal
-        )
+        residue_columns.append(input_signal)
 
     if fit_proportional_term:
-        residue_columns.append(
-            input_derivative
-        )
+        residue_columns.append(input_derivative)
 
-    residue_columns.append(
-        real_filtered_input_basis
-    )
+    residue_columns.append(real_filtered_input_basis)
 
-    residue_matrix = np.column_stack(
-        residue_columns
-    )
+    residue_matrix = np.column_stack(residue_columns)
 
-    weighted_residue_matrix = (
-        weights[:, None]
-        * residue_matrix
-    )
+    weighted_residue_matrix = weights[:, None] * residue_matrix
 
-    weighted_output_signal = (
-        weights
-        * output_signal
-    )
+    weighted_output_signal = weights * output_signal
 
-    residue_coefficients = (
-        _scaled_least_squares(
-            weighted_residue_matrix,
-            weighted_output_signal,
-        )
+    residue_coefficients = _scaled_least_squares(
+        weighted_residue_matrix,
+        weighted_output_signal,
     )
 
     coefficient_index = 0
@@ -1288,22 +1027,14 @@ def time_domain_vector_fit(
     # -----------------------------------------------------------------
 
     if fit_direct_term:
-        direct_term = complex(
-            residue_coefficients[
-                coefficient_index
-            ]
-        )
+        direct_term = complex(residue_coefficients[coefficient_index])
 
         coefficient_index += 1
     else:
         direct_term = 0.0 + 0.0j
 
     if fit_proportional_term:
-        proportional_term = complex(
-            residue_coefficients[
-                coefficient_index
-            ]
-        )
+        proportional_term = complex(residue_coefficients[coefficient_index])
 
         coefficient_index += 1
     else:
@@ -1313,31 +1044,19 @@ def time_domain_vector_fit(
     # Restore real and complex-conjugate residues
     # -----------------------------------------------------------------
 
-    residues = (
-        _restore_conjugate_residues(
-            real_coefficients=(
-                residue_coefficients[
-                    coefficient_index:
-                ]
-            ),
-            poles=poles,
-        )
+    residues = _restore_conjugate_residues(
+        real_coefficients=(residue_coefficients[coefficient_index:]),
+        poles=poles,
     )
 
     # -----------------------------------------------------------------
     # Reconstruct the fitted output
     # -----------------------------------------------------------------
 
-    fitted_output = (
-        direct_term * input_signal
-        + filtered_inputs @ residues
-    )
+    fitted_output = direct_term * input_signal + filtered_inputs @ residues
 
     if fit_proportional_term:
-        fitted_output += (
-            proportional_term
-            * input_derivative
-        )
+        fitted_output += proportional_term * input_derivative
 
     return TimeDomainVectorFitResult(
         poles=poles,
@@ -1348,6 +1067,7 @@ def time_domain_vector_fit(
         iterations=len(relocation_errors),
         proportional_term=proportional_term,
     )
+
 
 def evaluate_frequency_response(
     frequencies: ArrayLike,
@@ -1404,35 +1124,21 @@ def evaluate_frequency_response(
     )
 
     if frequencies.ndim != 1:
-        raise ValueError(
-            "frequencies must be one-dimensional."
-        )
+        raise ValueError("frequencies must be one-dimensional.")
 
     if poles.ndim != 1:
-        raise ValueError(
-            "poles must be one-dimensional."
-        )
+        raise ValueError("poles must be one-dimensional.")
 
     if residues.shape != poles.shape:
-        raise ValueError(
-            "poles and residues must have equal shapes."
-        )
+        raise ValueError("poles and residues must have equal shapes.")
 
     if fourier_sign not in (-1, 1):
-        raise ValueError(
-            "fourier_sign must be either -1 or +1."
-        )
+        raise ValueError("fourier_sign must be either -1 or +1.")
 
-    angular_frequencies = (
-        2.0 * np.pi * frequencies
-    )
+    angular_frequencies = 2.0 * np.pi * frequencies
 
     # exp(-j omega t) convention -> s = +j omega
-    s = (
-        -fourier_sign
-        * 1j
-        * angular_frequencies
-    )
+    s = -fourier_sign * 1j * angular_frequencies
 
     response = (
         np.full(
@@ -1488,75 +1194,40 @@ def evaluate_partially_decayed_frequency_response(
         dtype=complex,
     )
 
-    wake_length = float(
-        wake_length
-    )
+    wake_length = float(wake_length)
 
     if frequencies.ndim != 1:
-        raise ValueError(
-            "frequencies must be one-dimensional."
-        )
+        raise ValueError("frequencies must be one-dimensional.")
 
     if poles.ndim != 1:
-        raise ValueError(
-            "poles must be one-dimensional."
-        )
+        raise ValueError("poles must be one-dimensional.")
 
     if residues.shape != poles.shape:
-        raise ValueError(
-            "poles and residues must have equal shapes."
-        )
+        raise ValueError("poles and residues must have equal shapes.")
 
-    if not np.all(
-        np.isfinite(frequencies)
-    ):
-        raise ValueError(
-            "frequencies must contain only finite values."
-        )
+    if not np.all(np.isfinite(frequencies)):
+        raise ValueError("frequencies must contain only finite values.")
 
-    if not np.all(
-        np.isfinite(poles)
-    ):
-        raise ValueError(
-            "poles must contain only finite values."
-        )
+    if not np.all(np.isfinite(poles)):
+        raise ValueError("poles must contain only finite values.")
 
-    if not np.all(
-        np.isfinite(residues)
-    ):
-        raise ValueError(
-            "residues must contain only finite values."
-        )
+    if not np.all(np.isfinite(residues)):
+        raise ValueError("residues must contain only finite values.")
 
-    if (
-        not np.isfinite(wake_length)
-        or wake_length <= 0.0
-    ):
-        raise ValueError(
-            "wake_length must be positive and finite."
-        )
+    if not np.isfinite(wake_length) or wake_length <= 0.0:
+        raise ValueError("wake_length must be positive and finite.")
 
     if fourier_sign not in (-1, 1):
-        raise ValueError(
-            "fourier_sign must be either -1 or +1."
-        )
+        raise ValueError("fourier_sign must be either -1 or +1.")
 
-    angular_frequencies = (
-        2.0 * np.pi * frequencies
-    )
+    angular_frequencies = 2.0 * np.pi * frequencies
 
     # exp(-j omega t) convention:
     #
     # s = +j omega
-    s = (
-        -fourier_sign
-        * 1j
-        * angular_frequencies
-    )
+    s = -fourier_sign * 1j * angular_frequencies
 
-    wake_time = (
-        wake_length / c_light
-    )
+    wake_time = wake_length / c_light
 
     response = (
         np.full(
@@ -1572,16 +1243,6 @@ def evaluate_partially_decayed_frequency_response(
         residues,
         strict=True,
     ):
-        response += (
-            residue
-            * (
-                1.0
-                - np.exp(
-                    (pole - s)
-                    * wake_time
-                )
-            )
-            / (s - pole)
-        )
+        response += residue * (1.0 - np.exp((pole - s) * wake_time)) / (s - pole)
 
     return response
